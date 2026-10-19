@@ -369,9 +369,18 @@ export function BrowserView() {
         </div>
       )}
 
+      {humanControl && !agentSession && (
+        <div class="card control">
+          <div class="row" style="align-items:center">
+            <span class="small muted" style="flex:1">You are browsing. Agents wait until you are done.</span>
+            <button style="flex:0 0 auto" onClick={ret} disabled={busy}>Done</button>
+          </div>
+        </div>
+      )}
+
       {tabs.length > 1 && (
         <select value={frame?.meta.tabId} onChange={(e) => sendInput({ type: "select_tab", tabId: (e.target as HTMLSelectElement).value })} disabled={!humanControl} style="margin-bottom:8px">
-          {tabs.map((t) => <option key={t.id} value={t.id}>{t.title || t.url}</option>)}
+          {tabs.map((t) => <option key={t.id} value={t.id}>{t.session ? `${t.session}: ` : ""}{t.title || t.url}</option>)}
         </select>
       )}
 

@@ -563,6 +563,13 @@ const handlers: { [K in WorkerMethodName]: (params: any) => Promise<unknown> } =
   health: async () => health(),
   tabs: async () => tabs(),
   selectTab: ({ tabId }) => enqueue(async () => { await input({ type: "select_tab", tabId }); return tabs(); }).finally(() => void syncCast()),
+  newTab: () => enqueue(async () => {
+    if (!context || state !== "ready") throw new WorkerError("browser unavailable", "unavailable");
+    const p = await context.newPage();
+    selectedPage = p;
+    refsValid = false;
+    return { id: idFor(p) };
+  }).finally(() => void syncCast()),
   frame: ({ quality }) => enqueue(() => frame(quality)),
   observe: () => enqueue(observe),
   input: ({ input: inp, expect }) => enqueue(() => input(inp, expect)).finally(() => void syncCast()),

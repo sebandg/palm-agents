@@ -52,6 +52,8 @@ export const BrowserTab = z.object({
   url: z.string(),
   title: z.string(),
   selected: z.boolean(),
+  /** The terminal session whose agent works in this tab, if any. */
+  session: z.string().optional(),
 });
 export type BrowserTab = z.infer<typeof BrowserTab>;
 

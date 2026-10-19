@@ -2,6 +2,7 @@
 // forwards their browser tool calls here with the agent token. One agent holds the browser
 // at a time, and lets go after a short idle spell so another (or the owner) can use it.
 // request_human waits inside the call until the owner hands the browser back.
+// Each session works in its own tab, so one agent never navigates away from another's page.
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { BridgeToolArgs, type BridgeCall, type BridgeResult } from "@palm-agents/protocol";
@@ -19,6 +20,9 @@ export class AgentBridge {
   private tokenHash: string | null = null;
   private lastCall = new Map<string, number>();
   private lastHumanInput = 0;
+  /** Tabs each session works in, newest last (a popup it switched to comes after its own tab). */
+  private sessionTabs = new Map<string, string[]>();
+  private tabsGeneration = -1;
   private sweeper: NodeJS.Timeout | null = null;
   lastContactAt: string | null = null;
   onAlert: (a: Alert) => void = () => {};
@@ -88,7 +92,9 @@ export class AgentBridge {
     const gate = this.ownership.claim(holder);
     if (!gate.ok) return { status: 409, body: { ok: false, blocked: true, text: `Blocked: ${gate.reason}. Wait and try again, or ask the owner in the terminal.` } };
     try {
+      if (call.tool !== "browser_tabs") await this.useOwnTab(holder);
       const body = await this.exec(call.tool, args);
+      if (call.tool === "browser_tabs" && typeof args.select === "string" && body.ok) this.noteTab(holder, args.select);
       if (this.ownership.get().lease !== gate.lease) body.text += "\n\nNote: control of the browser changed during this action.";
       return { status: 200, body };
     } catch (err) {
@@ -115,6 +121,9 @@ export class AgentBridge {
     } else if (o.state === "human_control" && !o.humanRequest?.holder) {
       // The owner is already browsing: they keep the browser, now with this agent's request.
       this.ownership.adoptRequest({ holder, reason, kind, requestedBy: "agent" });
+      // Show the owner the page the agent needs help with.
+      const tab = await this.liveTabOf(holder).catch(() => undefined);
+      if (tab) await this.browser.client.call("selectTab", { tabId: tab }).catch(() => {});
       this.onAlert({ kind: "browser", session: holder });
     } else if (o.humanRequest?.holder !== holder) {
       return { status: 409, body: { ok: false, blocked: true, text: `Blocked: the shared browser is busy (${o.state.replace("_", " ")}${o.humanRequest?.holder ? ` for ${o.humanRequest.holder}` : ""}). Try again later.` } };
@@ -133,6 +142,46 @@ export class AgentBridge {
       await new Promise((r) => setTimeout(r, 500));
     }
     return { status: 200, body: { ok: false, text: "Still waiting: the owner has not handed the browser back yet. Call request_human again with the same reason to keep waiting." } };
+  }
+
+  /** Which session works in each tab, for the phone's tab list. */
+  tabSessions(): Map<string, string> {
+    const m = new Map<string, string>();
+    if (this.browser.health.generation !== this.tabsGeneration) return m;
+    for (const [session, ids] of this.sessionTabs) for (const id of ids) m.set(id, session);
+    return m;
+  }
+
+  private noteTab(holder: string, tabId: string) {
+    for (const [s, ids] of this.sessionTabs) if (s !== holder && ids.includes(tabId)) this.sessionTabs.set(s, ids.filter((i) => i !== tabId));
+    this.sessionTabs.set(holder, [...(this.sessionTabs.get(holder) ?? []).filter((i) => i !== tabId), tabId]);
+  }
+
+  /** The session's newest tab that is still open. Tab ids start over when the browser restarts. */
+  private async liveTabOf(holder: string): Promise<string | undefined> {
+    if (this.browser.health.generation !== this.tabsGeneration) {
+      this.sessionTabs.clear();
+      this.tabsGeneration = this.browser.health.generation;
+    }
+    const live = new Set((await this.browser.client.call("tabs", {})).map((t) => t.id));
+    const mine = (this.sessionTabs.get(holder) ?? []).filter((id) => live.has(id));
+    this.sessionTabs.set(holder, mine);
+    return mine.at(-1);
+  }
+
+  /** Select the session's own tab, first opening one (or taking a blank tab nobody uses). */
+  private async useOwnTab(holder: string) {
+    const c = this.browser.client;
+    let id = await this.liveTabOf(holder);
+    const tabs = await c.call("tabs", {});
+    if (!id) {
+      const taken = new Set([...this.sessionTabs.values()].flat());
+      id = tabs.find((t) => !taken.has(t.id) && t.url === "about:blank")?.id ?? (await c.call("newTab", {})).id;
+      this.noteTab(holder, id);
+      if (tabs.find((t) => t.id === id)?.selected) return;
+      if (!tabs.some((t) => t.id === id)) return; // newTab already selected it
+    }
+    if (!tabs.find((t) => t.id === id)?.selected) await c.call("selectTab", { tabId: id });
   }
 
   private async exec(tool: BridgeCall["tool"], args: Record<string, unknown>): Promise<BridgeResult> {
@@ -175,7 +224,8 @@ export class AgentBridge {
       }
       case "browser_tabs": {
         const tabs = typeof args.select === "string" ? await c.call("selectTab", { tabId: args.select }) : await c.call("tabs", {});
-        return { ok: true, text: tabs.map((t) => `${t.selected ? "*" : " "} ${t.id} ${t.title || "(untitled)"} ${t.url}`).join("\n") || "(no tabs)" };
+        const owners = this.tabSessions();
+        return { ok: true, text: tabs.map((t) => `${t.selected ? "*" : " "} ${t.id} ${t.title || "(untitled)"} ${t.url}${owners.get(t.id) ? ` [session ${owners.get(t.id)}]` : ""}`).join("\n") || "(no tabs)" };
       }
       default:
         return { ok: false, text: "unsupported tool" };

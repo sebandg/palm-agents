@@ -207,7 +207,8 @@ export function createApp(cfg: Config, log: Logger): App {
   });
   api.get("/browser/tabs", async (c) => {
     if (browser.health.state !== "ready") return c.json({ tabs: [], health: browser.health });
-    return c.json({ tabs: await browser.client.call("tabs", {}) });
+    const owners = agents.tabSessions();
+    return c.json({ tabs: (await browser.client.call("tabs", {})).map((t) => ({ ...t, session: owners.get(t.id) })) });
   });
   api.post("/browser/take-control", async (c) => {
     const body = TakeControlRequest.safeParse(await c.req.json().catch(() => ({})));
