@@ -1,0 +1,14 @@
+{
+  "name": "@palm-agents/mobile-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@palm-agents/protocol": "0.1.0",
+    "@preact/signals": "^2.5.1",
+    "preact": "10.29.8"
+  }
+}

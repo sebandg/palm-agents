@@ -1,0 +1,9 @@
+{
+  "name": "@palm-agents/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "web-push": "3.6.7" },
+  "devDependencies": { "@types/web-push": "3.6.4" }
+}

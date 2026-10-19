@@ -1,0 +1,13 @@
+node_modules/
+dist/
+apps/mobile-web/public/assets/
+*.log
+.DS_Store
+# runtime data: database, browser profile (contains authenticated website sessions), secrets
+data/
+.env
+.env.*
+tsconfig.tsbuildinfo
+apps/mobile-web/public/version.json
+# screenshots from the manual smoke tests
+tests/manual/out/

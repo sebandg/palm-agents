@@ -1,0 +1,33 @@
+{
+  "name": "palm-agents",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Palm Agents: control AI agents on a remote Mac (terminal sessions and a shared browser) from your iPhone",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "node scripts/build-bridge.mjs && npm run build -w @palm-agents/mobile-web",
+    "typecheck": "tsc -b tsconfig.json && tsc -p apps/mobile-web/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "node --no-warnings=ExperimentalWarning --import tsx apps/control-service/src/main.ts",
+    "start": "node --no-warnings=ExperimentalWarning --import tsx apps/control-service/src/main.ts",
+    "doctor": "node --no-warnings=ExperimentalWarning --import tsx scripts/doctor.ts",
+    "fixture": "node --import tsx tests/fixtures/login-site/server.ts",
+    "install-browser": "playwright install chromium",
+    "build:bridge": "node scripts/build-bridge.mjs",
+    "pair": "node --no-warnings=ExperimentalWarning --import tsx apps/control-service/src/main.ts pair"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.4",
+    "esbuild": "0.28.2"
+  }
+}

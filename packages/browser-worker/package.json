@@ -1,0 +1,11 @@
+{
+  "name": "@palm-agents/browser-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@palm-agents/protocol": "0.1.0",
+    "playwright": "1.64.0"
+  }
+}

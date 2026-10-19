@@ -1,0 +1,13 @@
+{
+  "name": "@palm-agents/mcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "bin": { "palm-agents-mcp-bridge": "./src/bin.ts" },
+  "dependencies": {
+    "@palm-agents/protocol": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.7"
+  }
+}

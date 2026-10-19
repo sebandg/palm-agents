@@ -1,0 +1,41 @@
+#!/bin/sh
+# cs — shorthand for the long tmux command: open a session (or re-attach to it)
+# in a directory. It shows up in the phone console's Terminal tab; run claude or
+# anything else inside it yourself.
+#
+#   cs                 session named after the current directory, in it
+#   cs NAME            session NAME in the current directory
+#   cs NAME DIR        session NAME in DIR
+#   cs -l              list sessions
+#
+# Detach with Ctrl-B then D; the session keeps running.
+set -eu
+
+TMUX_BIN="${PALM_AGENTS_TMUX:-}"
+if [ -z "$TMUX_BIN" ]; then
+  for c in "$(command -v tmux 2>/dev/null || true)" "$HOME/.local/bin/tmux" /opt/homebrew/bin/tmux /usr/local/bin/tmux; do
+    if [ -n "$c" ] && [ -x "$c" ]; then TMUX_BIN="$c"; break; fi
+  done
+fi
+if [ -z "$TMUX_BIN" ]; then echo "cs: tmux not found (see docs/setup.md, Terminal sessions)" >&2; exit 1; fi
+
+if [ "${1:-}" = "-l" ]; then exec "$TMUX_BIN" ls; fi
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0; fi
+
+DIR="${2:-$PWD}"
+case "$DIR" in "~"|"~/"*) DIR="$HOME${DIR#\~}";; esac
+[ -d "$DIR" ] || { echo "cs: no such directory: $DIR" >&2; exit 1; }
+NAME="$(printf '%s' "${1:-$(basename "$DIR")}" | tr -c 'A-Za-z0-9._-' '-')"
+
+# A claude started from inside another claude refuses to run, and the tmux server keeps
+# the environment it was first started with, so scrub those variables.
+CLEAN=""
+for v in $(env | grep -E '^(CLAUDE|ANTHROPIC)[A-Z_]*=' | cut -d= -f1); do CLEAN="$CLEAN -u $v"; done
+if [ -n "${TMUX:-}" ]; then
+  # already inside tmux: create if needed, then switch this client to it
+  # shellcheck disable=SC2086
+  "$TMUX_BIN" has-session -t "=$NAME" 2>/dev/null || env $CLEAN "$TMUX_BIN" new-session -d -s "$NAME" -c "$DIR"
+  exec "$TMUX_BIN" switch-client -t "=$NAME"
+fi
+# shellcheck disable=SC2086
+exec env $CLEAN "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR"
