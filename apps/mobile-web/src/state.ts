@@ -105,3 +105,11 @@ export function clearSensitive() {
   ownership.value = null;
   health.value = null;
 }
+
+/** Settings: open a Terminal window on the Mac for sessions started from this phone (default on). */
+export function openOnMac(): boolean {
+  try { return localStorage.getItem("pa.openOnMac") !== "0"; } catch { return true; }
+}
+export function setOpenOnMac(on: boolean) {
+  try { localStorage.setItem("pa.openOnMac", on ? "1" : "0"); } catch { /* private mode */ }
+}

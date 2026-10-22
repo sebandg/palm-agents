@@ -172,7 +172,7 @@ export class TerminalManager {
     return raw.split("\n").filter(Boolean).map((l) => { const [session, pid] = l.split(SEP); return { session: session ?? "", pid: Number(pid) }; }).filter((p) => p.session && p.pid > 0);
   }
 
-  async create(req: { name: string; cwd?: string; command?: string }): Promise<TermSession> {
+  async create(req: { name: string; cwd?: string; command?: string; openOnMac?: boolean }): Promise<TermSession> {
     this.require();
     checkName(req.name);
     const cwd = req.cwd ? path.resolve(req.cwd.replace(/^~(?=$|\/)/, os.homedir())) : os.homedir();
@@ -187,19 +187,59 @@ export class TerminalManager {
       throw e;
     }
     this.opts.log?.("info", `terminal session created: ${req.name} (${cwd})${req.command ? ` running ${req.command.split(" ")[0]}` : ""}`);
+    await this.ensureWidthHooks();
+    if (req.openOnMac) await this.openOnMac(req.name).catch((e) => this.opts.log?.("warn", `could not open a Mac window for ${req.name}: ${(e as Error).message}`));
     const s = (await this.list()).find((x) => x.name === req.name);
     if (!s) throw new TerminalError("session vanished after creation", "tmux");
     return s;
   }
 
   /**
+   * Open a Terminal window on the Mac attached to the session, in the background so it
+   * does not take focus from whatever the Mac is showing. Waits until it has attached, so
+   * the phone's own resize that follows wins the width.
+   */
+  private async openOnMac(name: string) {
+    if (process.platform !== "darwin") return;
+    const file = path.join(os.tmpdir(), `palm-agents-${name}-${Date.now()}.command`);
+    const sock = this.opts.socketName ? ` -L ${this.opts.socketName}` : "";
+    // The script deletes itself once Terminal has started it. The name is checked against TERM_NAME_RE.
+    fs.writeFileSync(file, `#!/bin/zsh
+rm -f "$0"
+exec ${this.bin}${sock} attach -t '=${name}'
+`, { mode: 0o700 });
+    await new Promise<void>((resolve, reject) => execFile("open", ["-g", "-a", "Terminal", file], (err) => (err ? reject(err) : resolve())));
+    for (let i = 0; i < 20; i++) {
+      const clients = await this.tmux(["list-clients", "-t", `=${name}`, "-F", "#{client_name}"]).catch(() => "");
+      if (clients.trim()) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /**
+   * Whoever used the session last gets their width. The phone sets its size (below); when a
+   * Mac client attaches, gets focus or is resized, these hooks hand the window back to the
+   * Mac's size. Global, so they also cover sessions started at the desk.
+   */
+  private async ensureWidthHooks() {
+    const restore = "set-option -w -u window-size";
+    await this.tmux([
+      "set-option", "-s", "focus-events", "on", ";",
+      "set-hook", "-g", "client-attached", restore, ";",
+      "set-hook", "-g", "client-focus-in", restore, ";",
+      "set-hook", "-g", "client-resized", restore,
+    ]).catch((e) => this.opts.log?.("warn", `could not set the tmux width hooks: ${(e as Error).message}`));
+  }
+
+  /**
    * Resize the session's window to the phone's grid. `window-size manual` keeps an attached
-   * desktop client from immediately overriding it; a desktop user can run `tmux resize-window -A`.
+   * desktop client from overriding it until the Mac is used again (see ensureWidthHooks).
    */
   async resize(name: string, size: { cols: number; rows: number }): Promise<void> {
     this.require();
     checkName(name);
     try {
+      await this.ensureWidthHooks();
       await this.tmux(["set-option", "-t", `=${name}:`, "window-size", "manual"]);
       await this.tmux(["resize-window", "-t", `=${name}:`, "-x", String(size.cols), "-y", String(size.rows)]);
     } catch (e) {

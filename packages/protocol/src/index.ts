@@ -251,6 +251,8 @@ export const TermCreateRequest = z.object({
   cwd: z.string().max(1024).optional(),
   /** Shell command to run in the new session (default: the login shell). */
   command: z.string().max(1024).optional(),
+  /** Also open a Terminal window on the Mac attached to the new session. */
+  openOnMac: z.boolean().optional(),
 });
 export type TermCreateRequest = z.infer<typeof TermCreateRequest>;
 /** Fit the pane to the phone so lines wrap at the phone's width instead of scrolling sideways. */

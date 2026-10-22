@@ -71,6 +71,13 @@ describe.skipIf(!tmux)("terminal sessions (tmux)", () => {
     expect((await c.post(`/api/term/${name}/resize`, { cols: 5, rows: 20 })).status).toBe(400);
   });
 
+  it("hands the width back to the Mac when a Mac client attaches, gets focus or is resized", async () => {
+    const run = (args: string[]) => import("node:child_process").then((cp) => new Promise<string>((r) => cp.execFile(tmux!, ["-L", SOCKET, ...args], (_e, out) => r(out))));
+    const hooks = await run(["show-hooks", "-g"]);
+    for (const h of ["client-attached", "client-focus-in", "client-resized"]) expect(hooks).toMatch(new RegExp(`${h}\\S* set-option -(uw|wu|w -u) window-size`));
+    expect(await run(["show-options", "-w", "-t", `=${name}:`, "window-size"])).toContain("manual");
+  });
+
   it("names the program running under a wrapping shell (`prog; exec zsh -l` sessions)", async () => {
     const c = client(env);
     expect((await c.post("/api/term", { name: "pa-test-wrapped", cwd: env.dataDir, command: "sleep 30; exec sh" })).status).toBe(201);

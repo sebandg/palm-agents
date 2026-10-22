@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { TermKey, TermScreen, TermSession } from "@palm-agents/protocol";
 import { api } from "../api.ts";
-import { conn, termAttention, termOpen } from "../state.ts";
+import { conn, openOnMac, termAttention, termOpen } from "../state.ts";
 import { renderAnsi } from "../ansi.ts";
 
 /** Scrollback to show. Every capture (poll, keys, resize) asks for the same depth so a reply never truncates the view. */
@@ -123,7 +123,7 @@ function NewSession({ taken, onCreated }: { taken: string[]; onCreated: (name: s
     let name = base;
     for (let i = 2; taken.includes(name); i++) name = `${base}-${i}`;
     try {
-      const r = await api.post<{ session: TermSession }>("/api/term", { name, cwd: dir, command: agent.command || undefined });
+      const r = await api.post<{ session: TermSession }>("/api/term", { name, cwd: dir, command: agent.command || undefined, openOnMac: openOnMac() });
       try { localStorage.setItem("pa.termCwd", dir); localStorage.setItem("pa.termAgent", choice); } catch { /* private mode */ }
       setShow(false);
       setOther("");
@@ -156,6 +156,8 @@ function NewSession({ taken, onCreated }: { taken: string[]; onCreated: (name: s
 
 function SessionView({ name, onBack }: { name: string; onBack: () => void }) {
   const [screen, setScreen] = useState<TermScreen | null>(null);
+  /** The grid last fitted to this phone, re-applied when typing after the Mac took the width. */
+  const phoneSize = useRef<{ cols: number; rows: number } | null>(null);
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -204,6 +206,7 @@ function SessionView({ name, onBack }: { name: string; onBack: () => void }) {
     // only hides part of it; resizing tmux on every keyboard toggle would redraw).
     if (document.documentElement.classList.contains("kb")) return;
     const rows = Math.max(12, Math.min(60, Math.floor((p.clientHeight - 16) / lineH)));
+    phoneSize.current = { cols, rows };
     try {
       show(await api.post<TermScreen>(`/api/term/${encodeURIComponent(name)}/resize?lines=${LINES}`, { cols, rows }));
     } catch { /* an attached desktop client may own the size; keep going */ }
@@ -231,8 +234,10 @@ function SessionView({ name, onBack }: { name: string; onBack: () => void }) {
     void fit().then(refresh);
     const t = setInterval(() => { if (document.visibilityState === "visible" && !busy) void refresh(); }, 1000);
     const onResize = () => void fit();
+    const onVisible = () => { if (document.visibilityState === "visible") void fit(); };
     window.addEventListener("resize", onResize);
-    return () => { clearInterval(t); window.removeEventListener("resize", onResize); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); window.removeEventListener("resize", onResize); document.removeEventListener("visibilitychange", onVisible); };
   }, [name]);
 
   // New text size → new character width → refit the tmux window (after the browser re-lays out).
@@ -246,6 +251,11 @@ function SessionView({ name, onBack }: { name: string; onBack: () => void }) {
     setBusy(true);
     setErr(null);
     try {
+      // The Mac took the width back since: typing here makes it the phone's again.
+      const ps = phoneSize.current;
+      if (ps && screen && (screen.size.cols !== ps.cols || screen.size.rows !== ps.rows)) {
+        await api.post(`/api/term/${encodeURIComponent(name)}/resize?lines=${LINES}`, ps).catch(() => {});
+      }
       show(await api.post<TermScreen>(`/api/term/${encodeURIComponent(name)}/keys?lines=${LINES}`, body));
     } catch (e) {
       setErr((e as Error).message);

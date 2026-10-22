@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.ts";
-import { clearSensitive, health, authed, vapidPublicKey } from "../state.ts";
+import { clearSensitive, health, authed, openOnMac, setOpenOnMac, vapidPublicKey } from "../state.ts";
 
 function Dot({ s }: { s: "ok" | "warn" | "bad" }) {
   return <span class={`dot ${s}`} />;
@@ -12,6 +12,7 @@ export function SystemView() {
   const [current, setCurrent] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [pushState, setPushState] = useState<string>("checking");
+  const [macWindow, setMacWindow] = useState(openOnMac());
   const load = () => api.get<{ sessions: typeof sessions; current: string }>("/api/sessions").then((r) => { setSessions(r.sessions); setCurrent(r.current); }).catch(() => {});
   useEffect(() => { void load(); void checkPush(); }, []);
 
@@ -68,6 +69,10 @@ export function SystemView() {
       <div class="card">
         <div><b>Agents</b> <span class="muted">· last used the browser {ago(h?.agent.lastContactAt ?? null)}</span></div>
         <div class="muted">Claude Code and Codex in terminal sessions drive the shared browser through the palm-browser tool (scripts/connect-agents.sh sets it up).</div>
+      </div>
+      <div class="card">
+        <label class="row" style="align-items:center;gap:8px"><input type="checkbox" style="flex:0 0 auto;width:auto" checked={macWindow} onChange={(e) => { const on = (e.target as HTMLInputElement).checked; setOpenOnMac(on); setMacWindow(on); }} /><b style="flex:1">Open new sessions on the Mac too</b></label>
+        <div class="muted">A session you start here also opens in a Terminal window on the Mac. The width follows whichever screen was used last.</div>
       </div>
       <div class="card">
         <div><b>Background alerts</b> {pushState}</div>
