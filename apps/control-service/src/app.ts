@@ -84,6 +84,7 @@ export function createApp(cfg: Config, log: Logger): App {
       sendAlert({ kind: "terminal", session: name });
     },
   });
+  agents.liveSessions = async () => (terminal.available ? (await terminal.list()).map((s) => s.name) : null);
 
   const previews = new PreviewManager({
     panePids: () => terminal.panePids(),

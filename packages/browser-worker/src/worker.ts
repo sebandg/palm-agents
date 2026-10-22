@@ -570,6 +570,16 @@ const handlers: { [K in WorkerMethodName]: (params: any) => Promise<unknown> } =
     refsValid = false;
     return { id: idFor(p) };
   }).finally(() => void syncCast()),
+  closeTab: ({ tabId }) => enqueue(async () => {
+    if (!context || state !== "ready") throw new WorkerError("browser unavailable", "unavailable");
+    const target = livePages().find((p) => idFor(p) === tabId);
+    if (!target) return tabs();
+    if (livePages().length === 1) selectedPage = await context.newPage();
+    else if (selectedPage === target) selectedPage = livePages().filter((p) => p !== target).at(-1) ?? null;
+    if (refPage === target) refsValid = false;
+    await target.close().catch(() => {});
+    return tabs();
+  }).finally(() => void syncCast()),
   frame: ({ quality }) => enqueue(() => frame(quality)),
   observe: () => enqueue(observe),
   input: ({ input: inp, expect }) => enqueue(() => input(inp, expect)).finally(() => void syncCast()),

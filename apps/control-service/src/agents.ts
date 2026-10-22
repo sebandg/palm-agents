@@ -26,6 +26,8 @@ export class AgentBridge {
   private sweeper: NodeJS.Timeout | null = null;
   lastContactAt: string | null = null;
   onAlert: (a: Alert) => void = () => {};
+  /** Names of the terminal sessions that still exist (null = unknown right now). */
+  liveSessions: () => Promise<string[] | null> = async () => null;
 
   constructor(
     private readonly cfg: Config,
@@ -54,7 +56,35 @@ export class AgentBridge {
   }
 
   /** The holder stopped using the browser a while ago: free it. */
+  private closing = false;
+  /** Sessions seen running in tmux; only these count as ended once they are gone. */
+  private seenLive = new Set<string>();
+  private async closeEndedSessionTabs() {
+    if (this.closing) return;
+    this.closing = true;
+    try { await this.closeEnded(); } finally { this.closing = false; }
+  }
+  private async closeEnded() {
+    if (this.browser.health.state !== "ready" || this.browser.health.generation !== this.tabsGeneration || this.sessionTabs.size === 0) return;
+    const live = await this.liveSessions().catch(() => null);
+    if (!live) return;
+    const o = this.ownership.get();
+    for (const [session, ids] of this.sessionTabs) {
+      if (live.includes(session)) { this.seenLive.add(session); continue; }
+      if (!this.seenLive.has(session) || ids.length === 0) continue;
+      // Still in a hand-over, or the owner is looking at that tab: try again later.
+      if (o.holder === session || o.humanRequest?.holder === session) continue;
+      if (o.state === "human_control" && (await this.browser.client.call("tabs", {})).some((t) => t.selected && ids.includes(t.id))) continue;
+      for (const id of ids) await this.browser.client.call("closeTab", { tabId: id }).catch(() => {});
+      this.sessionTabs.delete(session);
+      this.lastCall.delete(session);
+      this.seenLive.delete(session);
+      this.log("info", `session ${session} ended: closed its browser tab${ids.length > 1 ? "s" : ""}`);
+    }
+  }
+
   private releaseIdle() {
+    void this.closeEndedSessionTabs().catch(() => {});
     const o = this.ownership.get();
     if (o.state === "agent_control" && o.holder && Date.now() - (this.lastCall.get(o.holder) ?? 0) > this.cfg.agentIdleMs) {
       this.log("info", `agent ${o.holder} idle: browser free`);

@@ -11,6 +11,8 @@ export interface WorkerMethods {
   selectTab: { params: { tabId: string }; result: BrowserTab[] };
   /** Open a blank tab and select it. */
   newTab: { params: Record<string, never>; result: { id: string } };
+  /** Close a tab; the last tab is replaced by a blank one so the browser stays usable. */
+  closeTab: { params: { tabId: string }; result: BrowserTab[] };
   frame: { params: { quality?: number }; result: { meta: FrameMeta; jpegBase64: string } };
   observe: { params: Record<string, never>; result: { observation: Observation; jpegBase64: string; meta: FrameMeta } };
   input: { params: { input: BrowserInput; expect?: { generation: number; tabId: string } }; result: { meta: FrameMeta; filled?: FillField[] } };
