@@ -87,6 +87,10 @@ The **Terminal** tab is a phone remote for real interactive CLI sessions on the 
 - "Needs you": when the last lines of a session look like a prompt (y/n, numbered Yes/No choices, "Esc to cancel", password) the session is flagged on the phone and a generic push alert is sent once. It is a heuristic; the session's output is never parsed beyond that.
 - Each session shows **working** (its screen changed in the last few seconds), **needs you** (it looks like a prompt) or **idle**. A session that needs you shows a banner on the other tab; **Open** jumps to it. The service checks sessions every 3 s even with no phone open, so the push alert comes when the prompt appears.
 
+### Starting a session at the Mac
+
+Agents are only visible to Palm Agents while they run on the tmux server, so start them there even when you are at the keyboard: `cs <name>` opens or re-attaches a session, and `scripts/claude-session.command` (copy or symlink it to the Desktop and double-click) lists the projects in `~/dev`, newest first, and attaches a tmux session running `claude` in the one you pick. Both scrub `CLAUDE*`/`ANTHROPIC*` from the environment, which a nested `claude` would otherwise refuse to start with. A session started outside tmux has no phone remote, no push alerts, no photos into the prompt and no presence signal.
+
 ### The shared browser for terminal agents
 
 `scripts/connect-agents.sh` registers the `palm-browser` MCP tool (`packages/mcp-bridge`) for Claude Code (user scope) and Codex (`~/.codex/config.toml`, with a 300 s tool timeout). Re-run it after moving the repo. New agent sessions then have `browser_observe`, `browser_navigate`, `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_tabs`, `request_human` and `owner_context`.
