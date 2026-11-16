@@ -11,7 +11,7 @@ Vitest boots the real control service on a random loopback port with a temporary
 | `terminal-agent` | Agents use the shared browser through the MCP bridge: one holder at a time, released when idle, refused while the owner has it |
 | `handoff` | An agent calls `request_human`, the owner logs in through the phone endpoints and hands back; the password and code never appear in logs or diagnostics |
 | `credential-fill` | Password-manager fill finds the page's own username, password and code fields, including fields under a transparent overlay; a page without them gives a clear error |
-| `browser-live`, `browser-restore`, `phone-device` | Live frames over SSE, reopening the last page after a browser restart, phone emulation while the owner has control |
+| `browser-live`, `browser-restore`, `phone-device`, `restore` | Live frames over SSE, reopening the last page after a browser restart, phone emulation while the owner has control; a sign-in, consent or verification page is never the page that is reopened |
 | `previews-photos` | Photos are saved owner-only and pasted as a path; non-images are refused; dev servers started in a session are shared and unshared on the tailnet |
 | `alerts` | Push alerts name only the session and link to the right place |
 | `presence`, `links` | Which screen the owner is at: the thresholds per signal, a streaming phone vs a paired desktop browser, and `owner_context` answering without taking the browser; long web addresses wrapped over several terminal lines become one tappable link |

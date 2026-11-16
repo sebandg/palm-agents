@@ -6,6 +6,7 @@ import path from "node:path";
 import { chromium, type BrowserContext, type CDPSession, type Page } from "playwright";
 import type { BrowserHealth, BrowserInput, BrowserTab, FrameMeta, Observation } from "@palm-agents/protocol";
 import { WorkerError, type FillField, type IpcFromWorker, type IpcRequest, type WorkerMethodName } from "./ipc.ts";
+import { mayRestore } from "./restore.ts";
 
 const PROFILE_DIR = process.env.PALM_AGENTS_PROFILE_DIR;
 const HEADLESS = process.env.PALM_AGENTS_HEADLESS === "1";
@@ -14,7 +15,7 @@ const VIEWPORT = { width: Number(process.env.PALM_AGENTS_VIEWPORT_W ?? 1024), he
 const OP_TIMEOUT_MS = 30_000;
 
 if (!PROFILE_DIR) throw new Error("PALM_AGENTS_PROFILE_DIR is required");
-/** The selected tab's last web address, reopened after a restart (like "continue where you left off"). */
+/** The selected tab's last web address, reopened after a restart (like "continue where you left off"), unless it is a sign-in page (see restore.ts). */
 const LAST_URL_FILE = path.join(path.dirname(PROFILE_DIR), "browser-last-url.txt");
 if (!process.send) throw new Error("browser worker must be started with an IPC channel");
 
@@ -155,7 +156,7 @@ async function launch(): Promise<{ generation: number }> {
   let last = "";
   try { last = fs.readFileSync(LAST_URL_FILE, "utf8").trim(); } catch { /* none yet */ }
   const first = selectedPage;
-  if (/^https?:\/\/\S+$/.test(last) && first && first.url() === "about:blank") {
+  if (mayRestore(last) && first && first.url() === "about:blank") {
     void enqueue(() => withTimeout(first.goto(last, { waitUntil: "domcontentloaded", timeout: 15_000 }), 20_000)).catch(() => {});
   }
   return { generation };
