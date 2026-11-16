@@ -66,16 +66,77 @@ function css(s: Style): string {
 
 const ESC_RE = /\u001b\[([0-9;]*)m|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-9;?]*[A-Za-z]|\u001b[()][A-Z0-9]|\u001b[=>]/g;
 
-/** Render one screen of ANSI text as an array of spans and raw strings. */
-export function renderAnsi(text: string): ComponentChild[] {
+interface Link { start: number; end: number; href: string }
+
+const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
+const URL_CHARS_RE = /^[^\s<>"'`]+/;
+
+/**
+ * Web addresses in the screen's plain text, by offset. CLIs like claude break a long
+ * address over several lines themselves (an indent, then the rest), so an address that
+ * reaches the right edge carries on into the next line's leading run of address
+ * characters, as long as that run is itself a whole line or looks like part of an address.
+ */
+export function findLinks(plain: string, cols: number): Link[] {
+  const out: Link[] = [];
+  for (const m of plain.matchAll(URL_RE)) {
+    if (out.length && m.index! < out[out.length - 1]!.end) continue;
+    const pieces: Array<[number, number]> = [[m.index!, m.index! + m[0].length]];
+    let href = m[0];
+    for (;;) {
+      const end = pieces[pieces.length - 1]![1];
+      const lineStart = plain.lastIndexOf("\n", end - 1) + 1;
+      const nl = plain.indexOf("\n", end);
+      if (nl === -1 || plain.slice(end, nl).trim() !== "" || end - lineStart < cols - 2) break;
+      const next = nl + 1 + plain.slice(nl + 1).match(/^[ \t]*/)![0].length;
+      const run = plain.slice(next).match(URL_CHARS_RE)?.[0];
+      if (!run) break;
+      const lineEnd = plain.indexOf("\n", next);
+      const wholeLine = plain.slice(next + run.length, lineEnd === -1 ? undefined : lineEnd).trim() === "";
+      if (!wholeLine && !/[%&=?/#]/.test(run)) break;
+      pieces.push([next, next + run.length]);
+      href += run;
+      if (!wholeLine) break;
+    }
+    // Trailing punctuation belongs to the sentence, not the address.
+    const trimmed = href.replace(/[.,;:!?)\]}'"]+$/, "");
+    const last = pieces[pieces.length - 1]!;
+    last[1] = Math.max(last[0], last[1] - (href.length - trimmed.length));
+    if (!/^https?:\/\/[^/\s]+/.test(trimmed)) continue;
+    for (const [start, end] of pieces) if (end > start) out.push({ start, end, href: trimmed });
+  }
+  return out;
+}
+
+/** Render one screen of ANSI text as an array of spans and raw strings; web addresses become links. */
+export function renderAnsi(text: string, cols = 0): ComponentChild[] {
+  const plain = text.replace(ESC_RE, "");
+  const links = cols ? findLinks(plain, cols) : [];
   const out: ComponentChild[] = [];
   let st: Style = {};
   let last = 0;
   let key = 0;
+  let pos = 0; // offset of the next chunk in the plain text
+  const emit = (chunk: string, style: string) => (style ? h("span", { key: key++, style }, chunk) : chunk);
   const push = (chunk: string) => {
     if (!chunk) return;
     const style = css(st);
-    out.push(style ? h("span", { key: key++, style }, chunk) : chunk);
+    let i = 0;
+    while (i < chunk.length) {
+      const at = pos + i;
+      const link = links.find((l) => l.end > at && l.start < pos + chunk.length && l.start <= at);
+      const nextStart = links.find((l) => l.start > at && l.start < pos + chunk.length)?.start;
+      if (link) {
+        const stop = Math.min(link.end, pos + chunk.length) - pos;
+        out.push(h("a", { key: key++, href: link.href, target: "_blank", rel: "noopener noreferrer", class: "term-link" }, emit(chunk.slice(i, stop), style)));
+        i = stop;
+      } else {
+        const stop = (nextStart ?? pos + chunk.length) - pos;
+        out.push(emit(chunk.slice(i, stop), style));
+        i = stop;
+      }
+    }
+    pos += chunk.length;
   };
   for (const m of text.matchAll(ESC_RE)) {
     push(text.slice(last, m.index));

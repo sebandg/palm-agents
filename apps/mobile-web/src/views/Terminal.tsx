@@ -324,7 +324,7 @@ function SessionView({ name, onBack }: { name: string; onBack: () => void }) {
       </div>
       <pre ref={pre} class={`term-screen ${screen?.attention ? "attention" : ""}`} style={`font-size:${font}px`} onScroll={onScroll}>
         <span ref={probe} class="term-probe" aria-hidden="true">MMMMMMMMMM</span>
-        {screen ? renderAnsi(screen.text) : "…"}
+        {screen ? renderAnsi(screen.text, screen.size.cols) : "…"}
       </pre>
       {err && <div class="muted" style="color:var(--bad)">{err}</div>}
       {screen && isShell(screen.command) && (

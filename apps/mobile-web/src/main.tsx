@@ -22,19 +22,28 @@ async function checkForUpdate() {
 // App height. Home Screen apps on iOS report the layout viewport (innerHeight, dvh, fixed
 // bottom:0) one status bar short of the screen, which leaves an empty strip at the bottom;
 // the large viewport (lvh) is the real screen. With the keyboard up, the visible part wins.
+// The keyboard counts as up when a text field has focus and the visible part is clearly
+// shorter than the screen. (Newer iOS versions shrink innerHeight with the keyboard too, so
+// comparing against innerHeight alone misses it and the type bar ends up under the keyboard.)
+function screenHeight(): number {
+  const m = document.createElement("div");
+  m.style.cssText = "position:absolute;top:0;width:1px;height:100lvh;visibility:hidden";
+  document.body.appendChild(m);
+  const h = m.getBoundingClientRect().height;
+  m.remove();
+  return Math.max(h, window.innerHeight);
+}
+function typing(): boolean {
+  const a = document.activeElement as HTMLElement | null;
+  return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable);
+}
 function fitApp() {
   const root = document.documentElement;
   const vv = window.visualViewport;
   const visible = vv ? vv.height : window.innerHeight;
-  const kb = window.innerHeight - visible > 120;
-  let h = visible;
-  if ((navigator as unknown as { standalone?: boolean }).standalone && !kb) {
-    const m = document.createElement("div");
-    m.style.cssText = "position:absolute;top:0;width:1px;height:100lvh;visibility:hidden";
-    document.body.appendChild(m);
-    h = Math.max(visible, m.getBoundingClientRect().height);
-    m.remove();
-  }
+  const full = screenHeight();
+  const kb = typing() && full - visible > 150;
+  const h = (navigator as unknown as { standalone?: boolean }).standalone && !kb ? Math.max(visible, full) : visible;
   root.style.setProperty("--app-h", `${Math.round(h)}px`);
   root.classList.toggle("kb", kb);
 }
@@ -52,6 +61,8 @@ function openTarget(target: string | null) {
 }
 window.visualViewport?.addEventListener("resize", fitApp);
 window.addEventListener("resize", fitApp);
+// Focus changes come before the keyboard has finished moving: check again once it has.
+for (const ev of ["focusin", "focusout"]) document.addEventListener(ev, () => { fitApp(); setTimeout(fitApp, 400); });
 
 function App() {
   useEffect(() => {

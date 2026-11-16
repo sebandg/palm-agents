@@ -23,8 +23,12 @@ export const TOOL_DESCRIPTIONS: Record<BridgeToolName, string> = {
   browser_scroll: "Scroll the page vertically by dy pixels (positive = down).",
   browser_tabs: "List open tabs (including popups). Pass select=<id> to switch tabs.",
   request_human:
-    "Hand the shared browser to the owner when you hit a login, OTP, CAPTCHA, or a native dialog you cannot complete; their phone shows that you need them. This call waits until they hand the browser back (if it returns 'still waiting', call it again with the same reason). Never ask the owner to send you passwords or codes in chat.",
+    "Hand the shared browser to the owner when you hit a login, OTP, CAPTCHA, or a native dialog you cannot complete; their phone shows that you need them. This call waits until they hand the browser back (if it returns 'still waiting', call it again with the same reason). Never ask the owner to send you passwords or codes in chat. For a sign-in or authorization link (OAuth, device login, 'open this URL'), do not show the link in the terminal: browser_navigate to it, call request_human, and afterwards read the result (for example a redirect to localhost carrying ?code=) with browser_observe yourself.",
 };
+
+/** Sent to the agent once per session: how the owner is reached. */
+const INSTRUCTIONS =
+  "The owner usually works from their phone through Palm Agents: they read this terminal there but cannot easily tap, select or copy long text from it, and cannot use the Mac's own screen. Whenever they need to open a web page, sign in, authorize an app or approve something on a website, open it in this shared browser (browser_navigate) and hand it over with request_human, instead of printing a link or asking them to copy and paste. After they hand back, read what you need (URL, code, page text) with browser_observe.";
 
 export interface BridgeClientOptions {
   baseUrl: string;
@@ -61,7 +65,7 @@ export async function callBridge(opts: BridgeClientOptions, tool: BridgeToolName
 }
 
 export function createBridgeServer(opts: BridgeClientOptions): McpServer {
-  const server = new McpServer({ name: "palm-browser", version: "0.1.0" });
+  const server = new McpServer({ name: "palm-browser", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   for (const tool of BridgeToolName.options) {
     const schema = BridgeToolArgs[tool] as z.ZodObject<z.ZodRawShape>;
     server.registerTool(
