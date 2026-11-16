@@ -36,7 +36,7 @@ This is a single-owner system. It is **not** a sandbox against a malicious agent
 
 ## Data sent to the model provider
 
-The agent's provider (Anthropic for Claude Code, OpenAI for Codex) receives what you type into the agent and its tool results, including for every `browser_observe` the URL, title, element list, visible text snippet and a JPEG of the page. Screenshots taken **while you hold control** are shown only to you; the agent gets a new observation only after you hand back. Web Push payloads are generic strings sent through Apple's push service.
+The agent's provider (Anthropic for Claude Code, OpenAI for Codex) receives what you type into the agent and its tool results, including for every `browser_observe` the URL, title, element list, visible text snippet and a JPEG of the page. Screenshots taken **while you hold control** are shown only to you; the agent gets a new observation only after you hand back. An agent that calls `owner_context` is told which screen you are at and how long ago the Mac's keyboard or trackpad was touched, so that too reaches its provider; it is a time, never what you typed. Web Push payloads are generic strings sent through Apple's push service.
 
 ## Storage
 

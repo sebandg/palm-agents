@@ -14,6 +14,7 @@ Vitest boots the real control service on a random loopback port with a temporary
 | `browser-live`, `browser-restore`, `phone-device` | Live frames over SSE, reopening the last page after a browser restart, phone emulation while the owner has control |
 | `previews-photos` | Photos are saved owner-only and pasted as a path; non-images are refused; dev servers started in a session are shared and unshared on the tailnet |
 | `alerts` | Push alerts name only the session and link to the right place |
+| `presence`, `links` | Which screen the owner is at: the thresholds per signal, a streaming phone vs a paired desktop browser, and `owner_context` answering without taking the browser; long web addresses wrapped over several terminal lines become one tappable link |
 
 ## Manual smoke tests
 

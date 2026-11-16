@@ -23,12 +23,15 @@ export const TOOL_DESCRIPTIONS: Record<BridgeToolName, string> = {
   browser_scroll: "Scroll the page vertically by dy pixels (positive = down).",
   browser_tabs: "List open tabs (including popups). Pass select=<id> to switch tabs.",
   request_human:
-    "Hand the shared browser to the owner when you hit a login, OTP, CAPTCHA, or a native dialog you cannot complete; their phone shows that you need them. This call waits until they hand the browser back (if it returns 'still waiting', call it again with the same reason). Never ask the owner to send you passwords or codes in chat. For a sign-in or authorization link (OAuth, device login, 'open this URL'), do not show the link in the terminal: browser_navigate to it, call request_human, and afterwards read the result (for example a redirect to localhost carrying ?code=) with browser_observe yourself.",
+    "Hand the shared browser to the owner when you hit a login, OTP, CAPTCHA, or a native dialog you cannot complete; their phone shows that you need them. This call waits until they hand the browser back (if it returns 'still waiting', call it again with the same reason). Never ask the owner to send you passwords or codes in chat. For a sign-in or authorization link (OAuth, device login, 'open this URL'), unless owner_context says they are at the Mac, do not show the link in the terminal: browser_navigate to it, call request_human, and afterwards read the result (for example a redirect to localhost carrying ?code=) with browser_observe yourself.",
+  owner_context:
+    "Ask which screen the owner is at right now: the Mac, their phone, or neither. Read-only, cheap, and it neither needs nor takes the shared browser. Call it before you print a link, a code or a long piece of text for them, or before deciding whether to hand the browser over - where they are changes during a session.",
 };
 
-/** Sent to the agent once per session: how the owner is reached. */
+/** Sent to the agent once per session: how the owner is reached. Where they are is not in
+ * here on purpose - it changes while the session runs, so it is read per call (owner_context). */
 const INSTRUCTIONS =
-  "The owner usually works from their phone through Palm Agents: they read this terminal there but cannot easily tap, select or copy long text from it, and cannot use the Mac's own screen. Whenever they need to open a web page, sign in, authorize an app or approve something on a website, open it in this shared browser (browser_navigate) and hand it over with request_human, instead of printing a link or asking them to copy and paste. After they hand back, read what you need (URL, code, page text) with browser_observe.";
+  "The owner works from two screens: their phone through Palm Agents, where they read this terminal but cannot easily tap, select or copy long text from it and cannot use the Mac's own screen, and the Mac itself. Call owner_context to find out which one they are at right now. Whenever they need to open a web page, sign in, authorize an app or approve something on a website, and they are on the phone or you cannot tell, open it in this shared browser (browser_navigate) and hand it over with request_human instead of printing a link or asking them to copy and paste. After they hand back, read what you need (URL, code, page text) with browser_observe.";
 
 export interface BridgeClientOptions {
   baseUrl: string;

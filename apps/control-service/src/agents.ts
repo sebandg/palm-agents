@@ -5,7 +5,8 @@
 // Each session works in its own tab, so one agent never navigates away from another's page.
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
-import { BridgeToolArgs, type BridgeCall, type BridgeResult } from "@palm-agents/protocol";
+import { BridgeToolArgs, type BridgeCall, type BridgeResult, type OwnerPresence } from "@palm-agents/protocol";
+import { presenceNote, presenceText } from "./presence.ts";
 import type { WorkerError } from "@palm-agents/browser-worker";
 import { hashToken } from "./auth.ts";
 import type { OwnershipManager } from "./ownership.ts";
@@ -28,6 +29,8 @@ export class AgentBridge {
   onAlert: (a: Alert) => void = () => {};
   /** Names of the terminal sessions that still exist (null = unknown right now). */
   liveSessions: () => Promise<string[] | null> = async () => null;
+  /** Where the owner is, read live for owner_context and while waiting on them. */
+  presence: ((session?: string) => Promise<OwnerPresence>) | null = null;
 
   constructor(
     private readonly cfg: Config,
@@ -115,6 +118,9 @@ export class AgentBridge {
     if (!parsed.success) return { status: 400, body: { ok: false, text: `invalid arguments for ${call.tool}: ${parsed.error.issues.map((i) => i.message).join("; ")}` } };
     const args = parsed.data as Record<string, unknown>;
     const holder = session ?? "agent";
+    // Read-only and browser-free: asking where the owner is must not count as using the
+    // browser, or an agent that only asks would hold it and keep everyone else out.
+    if (call.tool === "owner_context") return this.ownerContext(session);
     this.lastCall.set(holder, Date.now());
     this.reclaimFromIdleOwner();
     if (call.tool === "request_human") return this.requestHuman(holder, String(args.reason), String(args.kind) as "login");
@@ -131,6 +137,13 @@ export class AgentBridge {
       const e = err as Partial<WorkerError>;
       return { status: 200, body: { ok: false, text: e.code === "stale_ref" ? e.message! : `browser error: ${e.message ?? String(err)}` } };
     }
+  }
+
+  /** Where the owner is, so an agent can choose between the terminal and the shared browser. */
+  private async ownerContext(session: string | undefined): Promise<Reply> {
+    const p = this.presence ? await this.presence(session).catch(() => null) : null;
+    if (!p) return { status: 200, body: { ok: false, text: "Where the owner is could not be read just now. Assume the phone: open pages in the shared browser and hand them over with request_human." } };
+    return { status: 200, body: { ok: true, text: presenceText(p) } };
   }
 
   /** The owner took the browser just to browse and has left it alone for a while: an agent may have it back. */
@@ -171,7 +184,10 @@ export class AgentBridge {
       if (cur.humanRequest?.holder !== holder) return { status: 200, body: { ok: false, text: "The owner kept the browser for something else. Ask them in the terminal before using it again." } };
       await new Promise((r) => setTimeout(r, 500));
     }
-    return { status: 200, body: { ok: false, text: "Still waiting: the owner has not handed the browser back yet. Call request_human again with the same reason to keep waiting." } };
+    // `holder` is the agent's tmux session, or "agent" when it runs outside one.
+    const p = this.presence ? await this.presence(holder === "agent" ? undefined : holder).catch(() => null) : null;
+    const note = p ? ` ${presenceNote(p)}` : "";
+    return { status: 200, body: { ok: false, text: `Still waiting: the owner has not handed the browser back yet.${note} Call request_human again with the same reason to keep waiting.` } };
   }
 
   /** Which session works in each tab, for the phone's tab list. */

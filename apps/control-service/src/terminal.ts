@@ -247,6 +247,31 @@ exec ${this.bin}${sock} attach -t '=${name}'
     }
   }
 
+  /**
+   * Who used this session's window last, for presence. tmux knows nothing about the phone
+   * (it reads panes, it does not attach), so any attached client is a Mac one, and the
+   * window keeping the phone's manual size means no Mac client has attached, taken focus or
+   * resized since the phone set it (see ensureWidthHooks).
+   */
+  async screenSignals(name: string): Promise<{ deskClientIdleSec: number | null; phoneSizedLast: boolean } | null> {
+    if (!this.bin) return null;
+    checkName(name);
+    try {
+      const clients = await this.tmux(["list-clients", "-t", `=${name}`, "-F", "#{client_activity}"]);
+      const active = clients
+        .split("\n")
+        .map((l) => Number(l.trim()))
+        .filter((n) => Number.isFinite(n) && n > 0);
+      const size = await this.tmux(["show-options", "-w", "-t", `=${name}:`, "window-size"]).catch(() => "");
+      return {
+        deskClientIdleSec: active.length ? Math.max(0, Math.round(Date.now() / 1000 - Math.max(...active))) : null,
+        phoneSizedLast: /\bmanual\b/.test(size),
+      };
+    } catch {
+      return null; // the session may have ended between calls; presence falls back to the rest
+    }
+  }
+
   async kill(name: string): Promise<void> {
     this.require();
     checkName(name);

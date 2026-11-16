@@ -89,10 +89,11 @@ The **Terminal** tab is a phone remote for real interactive CLI sessions on the 
 
 ### The shared browser for terminal agents
 
-`scripts/connect-agents.sh` registers the `palm-browser` MCP tool (`packages/mcp-bridge`) for Claude Code (user scope) and Codex (`~/.codex/config.toml`, with a 300 s tool timeout). Re-run it after moving the repo. New agent sessions then have `browser_observe`, `browser_navigate`, `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_tabs` and `request_human`.
+`scripts/connect-agents.sh` registers the `palm-browser` MCP tool (`packages/mcp-bridge`) for Claude Code (user scope) and Codex (`~/.codex/config.toml`, with a 300 s tool timeout). Re-run it after moving the repo. New agent sessions then have `browser_observe`, `browser_navigate`, `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_tabs`, `request_human` and `owner_context`.
 
 - The tool authenticates with `~/.palm-agents/agent-bridge-token` (owner-only, new on every service start; read on each call, so a restart needs no config change). The endpoint refuses requests that came through Tailscale Serve.
 - An agent may use the browser when nobody else holds it. While you use it on the phone, its calls are refused with "the owner is using the shared browser".
+- `owner_context` tells the agent which screen you are at right now, so it can print a link when you are sitting in front of it and hand the browser over when you are not. It reads three things: seconds since the Mac's keyboard or trackpad was touched (`HIDIdleTime`), whether a paired phone is holding the event stream open (the app does that only in the foreground), and, for the agent's own tmux session, an attached Mac client's last activity and whether the window still has the phone's width. Read-only: it neither needs nor takes the browser. The phone's own `/api/presence` returns the same verdict.
 - `request_human` hands the browser to the phone ("Claude needs you", with a button back to the agent's session) and waits inside the call until you tap **Return to Claude**, up to 4 minutes per call (`PALM_AGENTS_AGENT_WAIT_SEC`); the agent calls it again to keep waiting.
 
 ### Photos and dev-server previews

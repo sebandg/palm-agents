@@ -142,6 +142,7 @@ export const BridgeToolName = z.enum([
   "browser_scroll",
   "browser_tabs",
   "request_human",
+  "owner_context",
 ]);
 export type BridgeToolName = z.infer<typeof BridgeToolName>;
 
@@ -165,6 +166,7 @@ export const BridgeToolArgs: Record<BridgeToolName, z.ZodTypeAny> = {
     reason: z.string().max(500),
     kind: z.enum(["login", "otp", "captcha", "native_dialog", "other"]),
   }),
+  owner_context: z.object({}),
 };
 
 export const BridgeCall = z.object({
@@ -214,6 +216,24 @@ export const DeviceRequest = z.union([
 ]);
 export type DeviceRequest = z.infer<typeof DeviceRequest>;
 export const TakeControlRequest = z.object({ reason: z.string().max(500).optional() });
+
+/**
+ * Which screen the owner is at, as the control service reads it. "away" means neither screen
+ * is being watched; "unknown" means no signal was readable at all. `confidence` says how
+ * fresh the signal behind it is: "live" now, "recent" within a couple of minutes, "guess"
+ * from whatever was used last.
+ */
+export const OwnerPresence = z.object({
+  where: z.enum(["desk", "phone", "away", "unknown"]),
+  confidence: z.enum(["live", "recent", "guess"]),
+  /** The screen used most recently, when nothing is live. */
+  lastKnown: z.enum(["desk", "phone"]).nullable(),
+  /** The signals behind the verdict, in words, for the agent and for diagnostics. */
+  why: z.array(z.string()),
+  /** What this means for an agent about to show the owner something. */
+  advice: z.string(),
+});
+export type OwnerPresence = z.infer<typeof OwnerPresence>;
 
 export const HealthReport = z.object({
   service: z.object({ ok: z.boolean(), startedAt: z.string(), now: z.string(), version: z.string() }),

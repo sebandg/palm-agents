@@ -29,6 +29,15 @@ const tmux = findTmux(process.env.PALM_AGENTS_TMUX);
 add("tmux", tmux ? "ok" : "warn", tmux ? `${tmux} (${execFileSync(tmux, ["-V"], { encoding: "utf8" }).trim()})` : "not installed: the Terminal tab needs tmux (docs/setup.md, Terminal sessions)");
 const ts = ["/Applications/Tailscale.app", "/usr/local/bin/tailscale", `${process.env.HOME}/go/bin/tailscale`].find((p) => fs.existsSync(p));
 add("tailscale", ts ? "ok" : "warn", ts ?? "not installed: private HTTPS access from the iPhone needs Tailscale (docs/setup.md)");
+import { readHidIdleSec } from "../apps/control-service/src/presence.ts";
+const idle = await readHidIdleSec();
+add(
+  "mac input idle",
+  idle === null ? "warn" : "ok",
+  idle === null
+    ? "ioreg unreadable: owner_context cannot tell the desk from a phone left open (the launchd job needs /usr/sbin on its PATH: re-run scripts/install-launchd.sh)"
+    : `${Math.round(idle)}s since the keyboard or trackpad was touched`,
+);
 add("data dir", fs.existsSync(cfg.dataDir) ? "ok" : "warn", cfg.dataDir);
 add("db", fs.existsSync(cfg.dbPath) ? "ok" : "warn", fs.existsSync(cfg.dbPath) ? `${(fs.statSync(cfg.dbPath).size / 1024).toFixed(0)} KiB` : "created on first start");
 add("browser profile", fs.existsSync(cfg.profileDir) ? "ok" : "warn", fs.existsSync(cfg.profileDir) ? `${cfg.profileDir} (mode ${(fs.statSync(cfg.profileDir).mode & 0o777).toString(8)})` : "created on first start");

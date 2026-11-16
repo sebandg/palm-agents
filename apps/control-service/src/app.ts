@@ -16,6 +16,7 @@ import { BrowserSupervisor } from "./browser.ts";
 import { OwnershipManager } from "./ownership.ts";
 import { AgentBridge } from "./agents.ts";
 import { TerminalError, TerminalManager } from "./terminal.ts";
+import { PresenceService } from "./presence.ts";
 import { PreviewError, PreviewManager } from "./previews.ts";
 import { pruneUploads, saveImage } from "./uploads.ts";
 import type { Logger } from "./log.ts";
@@ -31,6 +32,7 @@ export interface App {
   agents: AgentBridge;
   terminal: TerminalManager;
   previews: PreviewManager;
+  presence: PresenceService;
   health(): HealthReport;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -85,6 +87,14 @@ export function createApp(cfg: Config, log: Logger): App {
     },
   });
   agents.liveSessions = async () => (terminal.available ? (await terminal.list()).map((s) => s.name) : null);
+
+  // Where the owner is, for agents deciding between a link in the terminal and the shared browser.
+  const presence = new PresenceService({
+    listSessions: () => store.listSessions(),
+    sessionSignals: (name) => terminal.screenSignals(name),
+    log,
+  });
+  agents.presence = (session) => presence.read(session);
 
   const previews = new PreviewManager({
     panePids: () => terminal.panePids(),
@@ -170,9 +180,11 @@ export function createApp(cfg: Config, log: Logger): App {
 
   api.get("/health", (c) => c.json(health()));
   api.get("/diagnostics", (c) => c.json({ health: health(), recentLog: log.recent().slice(-100) }));
+  api.get("/presence", async (c) => c.json(await presence.read(c.req.query("session") || undefined)));
 
   api.get("/stream", (c) => {
     const start = Number(c.req.header("last-event-id") ?? c.req.query("cursor") ?? store.latestCursor());
+    const unnote = presence.noteStreamClient(c.get("session").label);
     return streamSSE(c, async (s) => {
       let closed = false;
       const send = (env: unknown, id?: number) => s.writeSSE({ data: JSON.stringify(env), id: id !== undefined ? String(id) : undefined, event: "env" }).catch(() => { closed = true; });
@@ -193,6 +205,7 @@ export function createApp(cfg: Config, log: Logger): App {
       while (!closed) await new Promise((r) => setTimeout(r, 500));
       clearInterval(ping);
       unsub();
+      unnote();
     });
   });
 
@@ -439,6 +452,7 @@ export function createApp(cfg: Config, log: Logger): App {
     agents,
     terminal,
     previews,
+    presence,
     health,
     async start() {
       agents.issueToken(path.join(cfg.dataDir, "agent-bridge-token"));
