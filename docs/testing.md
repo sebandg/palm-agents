@@ -13,6 +13,7 @@ Vitest boots the real control service on a random loopback port with a temporary
 | `credential-fill` | Password-manager fill finds the page's own username, password and code fields, including fields under a transparent overlay; a page without them gives a clear error |
 | `browser-live`, `browser-restore`, `phone-device`, `restore` | Live frames over SSE, reopening the last page after a browser restart, pages sized to the owner's phone while they have control, without the browser claiming to be one; a sign-in, consent or verification page is never the page that is reopened |
 | `previews-photos` | Photos are saved owner-only and pasted as a path; non-images are refused; dev servers started in a session are shared and unshared on the tailnet |
+| `open-session` | An agent opens a session for a project through the bridge: named after the folder, running the configured command there; no duplicate for the same project; a clear error for a missing folder |
 | `alerts` | Push alerts name only the session and link to the right place |
 | `presence`, `links` | Which screen the owner is at: the thresholds per signal, a streaming phone vs a paired desktop browser, and `owner_context` answering without taking the browser; long web addresses wrapped over several terminal lines become one tappable link |
 

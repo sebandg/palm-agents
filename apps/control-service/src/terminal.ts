@@ -207,7 +207,7 @@ export class TerminalManager {
    * does not take focus from whatever the Mac is showing. Waits until it has attached, so
    * the phone's own resize that follows wins the width.
    */
-  private async openOnMac(name: string) {
+  private async openOnMac(name: string, front = false) {
     if (process.platform !== "darwin") return;
     const file = path.join(os.tmpdir(), `palm-agents-${name}-${Date.now()}.command`);
     const sock = this.opts.socketName ? ` -L ${this.opts.socketName}` : "";
@@ -216,7 +216,7 @@ export class TerminalManager {
 rm -f "$0"
 exec ${this.bin}${sock} attach -t '=${name}'
 `, { mode: 0o700 });
-    await new Promise<void>((resolve, reject) => execFile("open", ["-g", "-a", "Terminal", file], (err) => (err ? reject(err) : resolve())));
+    await new Promise<void>((resolve, reject) => execFile("open", [...(front ? [] : ["-g"]), "-a", "Terminal", file], (err) => (err ? reject(err) : resolve())));
     for (let i = 0; i < 20; i++) {
       const clients = await this.tmux(["list-clients", "-t", `=${name}`, "-F", "#{client_name}"]).catch(() => "");
       if (clients.trim()) return;
@@ -229,6 +229,13 @@ exec ${this.bin}${sock} attach -t '=${name}'
    * Mac client attaches, gets focus or is resized, these hooks hand the window back to the
    * Mac's size. Global, so they also cover sessions started at the desk.
    */
+  /** A Terminal window on the Mac attached to an existing session, in front. */
+  async openWindow(name: string): Promise<void> {
+    this.require();
+    checkName(name);
+    await this.openOnMac(name, true);
+  }
+
   private async ensureWidthHooks() {
     const restore = "set-option -w -u window-size";
     await this.tmux([

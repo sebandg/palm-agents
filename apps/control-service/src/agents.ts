@@ -31,6 +31,8 @@ export class AgentBridge {
   liveSessions: () => Promise<string[] | null> = async () => null;
   /** Where the owner is, read live for owner_context and while waiting on them. */
   presence: ((session?: string) => Promise<OwnerPresence>) | null = null;
+  /** Opens a terminal session for a project; resolves to what to tell the agent. */
+  openSession: ((args: { project: string; name?: string }) => Promise<string>) | null = null;
 
   constructor(
     private readonly cfg: Config,
@@ -121,6 +123,13 @@ export class AgentBridge {
     // Read-only and browser-free: asking where the owner is must not count as using the
     // browser, or an agent that only asks would hold it and keep everyone else out.
     if (call.tool === "owner_context") return this.ownerContext(session);
+    if (call.tool === "open_session") {
+      if (!this.openSession) return { status: 200, body: { ok: false, text: "Terminal sessions are not available on this machine." } };
+      return this.openSession(args as { project: string; name?: string }).then(
+        (text) => ({ status: 200, body: { ok: true, text } }),
+        (e: Error) => ({ status: 200, body: { ok: false, text: e.message } }),
+      );
+    }
     this.lastCall.set(holder, Date.now());
     this.reclaimFromIdleOwner();
     if (call.tool === "request_human") return this.requestHuman(holder, String(args.reason), String(args.kind) as "login");

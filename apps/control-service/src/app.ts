@@ -95,6 +95,18 @@ export function createApp(cfg: Config, log: Logger): App {
     log,
   });
   agents.presence = (session) => presence.read(session);
+  // "Open a session for <project>": a tmux session running the agent CLI there, visible to
+  // the phone, plus a Terminal window on the Mac so it is not only running in the background.
+  agents.openSession = async ({ project, name }) => {
+    const dir = path.resolve(/^[~/]/.test(project) ? project.replace(/^~(?=$|\/)/, process.env.HOME ?? "") : path.join(cfg.devDir, project));
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`No such project folder: ${dir}`);
+    const session = (name ?? path.basename(dir).replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40)) || "session";
+    const existed = (await terminal.list()).some((s) => s.name === session);
+    if (!existed) await terminal.create({ name: session, cwd: dir, command: cfg.sessionCommand });
+    const window = cfg.macWindows && process.platform === "darwin";
+    if (window) await terminal.openWindow(session);
+    return `${existed ? `Session "${session}" was already running` : `Started session "${session}" in ${dir}`}${window ? "; a Terminal window attached to it is open on the Mac" : ""}. It is in the phone's Terminal tab.`;
+  };
 
   const previews = new PreviewManager({
     panePids: () => terminal.panePids(),

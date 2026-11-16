@@ -22,6 +22,12 @@ export interface Config {
   tmuxBin: string | undefined;
   /** Optional tmux socket name (`tmux -L`). Unset = the default server, so sessions the owner starts in Terminal.app are visible. */
   tmuxSocket: string | undefined;
+  /** Where open_session looks for a project given by name. */
+  devDir: string;
+  /** What open_session runs in a new session. */
+  sessionCommand: string;
+  /** Open a Terminal window on the Mac for sessions an agent opens. */
+  macWindows: boolean;
   /** Tailscale CLI for dev-server previews; null = previews off (PALM_AGENTS_TAILSCALE=off). */
   tailscaleBin: string | null;
   secureCookies: boolean;
@@ -55,6 +61,10 @@ export function loadConfig(env = process.env): Config {
     pushContact: env.PALM_AGENTS_PUSH_CONTACT || allowedOrigins.find((o) => o.startsWith("https://")) || "mailto:owner@localhost",
     tmuxBin: env.PALM_AGENTS_TMUX || undefined,
     tmuxSocket: env.PALM_AGENTS_TMUX_SOCKET || undefined,
+    devDir: env.PALM_AGENTS_DEV_DIR || path.join(env.HOME || os.homedir(), "dev"),
+    // Carry on the project's last conversation; a project without one starts fresh.
+    sessionCommand: env.PALM_AGENTS_SESSION_COMMAND || "claude --continue || claude",
+    macWindows: env.PALM_AGENTS_MAC_WINDOWS !== "0",
     tailscaleBin: env.PALM_AGENTS_TAILSCALE === "off" ? null : findTailscale(env.PALM_AGENTS_TAILSCALE || undefined),
     secureCookies: env.PALM_AGENTS_INSECURE_COOKIES !== "1",
     headlessBrowser: env.PALM_AGENTS_HEADLESS === "1",

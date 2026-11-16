@@ -93,11 +93,12 @@ Agents are only visible to Palm Agents while they run on the tmux server, so sta
 
 ### The shared browser for terminal agents
 
-`scripts/connect-agents.sh` registers the `palm-browser` MCP tool (`packages/mcp-bridge`) for Claude Code (user scope) and Codex (`~/.codex/config.toml`, with a 300 s tool timeout). Re-run it after moving the repo. New agent sessions then have `browser_observe`, `browser_navigate`, `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_tabs`, `request_human` and `owner_context`.
+`scripts/connect-agents.sh` registers the `palm-browser` MCP tool (`packages/mcp-bridge`) for Claude Code (user scope) and Codex (`~/.codex/config.toml`, with a 300 s tool timeout). Re-run it after moving the repo. New agent sessions then have `browser_observe`, `browser_navigate`, `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_tabs`, `request_human`, `owner_context` and `open_session`.
 
 - The tool authenticates with `~/.palm-agents/agent-bridge-token` (owner-only, new on every service start; read on each call, so a restart needs no config change). The endpoint refuses requests that came through Tailscale Serve.
 - An agent may use the browser when nobody else holds it. While you use it on the phone, its calls are refused with "the owner is using the shared browser".
 - `owner_context` tells the agent which screen you are at right now, so it can print a link when you are sitting in front of it and hand the browser over when you are not. It reads three things: seconds since the Mac's keyboard or trackpad was touched (`HIDIdleTime`), whether a paired phone is holding the event stream open (the app does that only in the foreground), and, for the agent's own tmux session, an attached Mac client's last activity and whether the window still has the phone's width. Read-only: it neither needs nor takes the browser. The phone's own `/api/presence` returns the same verdict.
+- `open_session` is what an agent uses when you say "open a session for my-app": the service starts a tmux session in that folder running `claude --continue || claude` (the project's last conversation, or a new one) and opens a Terminal window attached to it on the Mac. A bare name is looked up in `~/dev`; a path works too. Nothing to paste into your agent's instructions: the tool comes with `connect-agents.sh`.
 - `request_human` hands the browser to the phone ("Claude needs you", with a button back to the agent's session) and waits inside the call until you tap **Return to Claude**, up to 4 minutes per call (`PALM_AGENTS_AGENT_WAIT_SEC`); the agent calls it again to keep waiting.
 
 ### Photos and dev-server previews
@@ -119,6 +120,9 @@ Agents are only visible to Palm Agents while they run on the tmux server, so sta
 | `PALM_AGENTS_BROWSER_CHANNEL` | (Playwright Chromium) | `chrome` to use installed Google Chrome |
 | `PALM_AGENTS_HEADLESS` | `0` | `1` for headless (tests) |
 | `PALM_AGENTS_AGENT_WAIT_SEC` | `240` | how long one `request_human` call waits for Hand back |
+| `PALM_AGENTS_DEV_DIR` | `~/dev` | where `open_session` looks for a project given by name |
+| `PALM_AGENTS_SESSION_COMMAND` | `claude --continue \|\| claude` | what `open_session` runs in a new session (e.g. `codex`) |
+| `PALM_AGENTS_MAC_WINDOWS` | on | `0` = `open_session` does not open a Terminal window on the Mac |
 | `PALM_AGENTS_AGENT_IDLE_SEC` | `30` | an agent that stops using the browser lets go after this |
 | `PALM_AGENTS_OWNER_IDLE_SEC` | `60` | browsing on your own without input this long lets an agent take the browser back |
 | `PALM_AGENTS_SESSION_TTL_DAYS` | `30` | phone session lifetime |

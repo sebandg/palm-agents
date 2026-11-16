@@ -24,6 +24,8 @@ export const TOOL_DESCRIPTIONS: Record<BridgeToolName, string> = {
   browser_tabs: "List open tabs (including popups). Pass select=<id> to switch tabs.",
   request_human:
     "Hand the shared browser to the owner when you hit a login, OTP, CAPTCHA, or a native dialog you cannot complete; their phone shows that you need them. This call waits until they hand the browser back (if it returns 'still waiting', call it again with the same reason). Never ask the owner to send you passwords or codes in chat. For a sign-in or authorization link (OAuth, device login, 'open this URL'), unless owner_context says they are at the Mac, do not show the link in the terminal: browser_navigate to it, call request_human, and afterwards read the result (for example a redirect to localhost carrying ?code=) with browser_observe yourself.",
+  open_session:
+    "Open a terminal session for a project on this machine: a tmux session running the agent CLI in that folder, which the owner sees on their phone, plus a Terminal window attached to it on the Mac. Use this whenever the owner asks to open or start a session for a project, instead of running tmux yourself. Pass the folder's name (looked up in the owner's projects directory) or a path. If the session already exists, it only opens the window.",
   owner_context:
     "Ask which screen the owner is at right now: the Mac, their phone, or neither. Read-only, cheap, and it neither needs nor takes the shared browser. Call it before you print a link, a code or a long piece of text for them, or before deciding whether to hand the browser over - where they are changes during a session.",
 };

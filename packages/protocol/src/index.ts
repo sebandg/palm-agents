@@ -143,6 +143,7 @@ export const BridgeToolName = z.enum([
   "browser_tabs",
   "request_human",
   "owner_context",
+  "open_session",
 ]);
 export type BridgeToolName = z.infer<typeof BridgeToolName>;
 
@@ -167,6 +168,10 @@ export const BridgeToolArgs: Record<BridgeToolName, z.ZodTypeAny> = {
     kind: z.enum(["login", "otp", "captcha", "native_dialog", "other"]),
   }),
   owner_context: z.object({}),
+  open_session: z.object({
+    project: z.string().min(1).max(1024).describe("Project folder: a name inside the owner's projects directory (e.g. my-app), or an absolute or ~ path"),
+    name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/).optional().describe("Session name (default: the folder's name)"),
+  }),
 };
 
 export const BridgeCall = z.object({
