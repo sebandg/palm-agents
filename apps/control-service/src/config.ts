@@ -68,7 +68,9 @@ export function loadConfig(env = process.env): Config {
     tailscaleBin: env.PALM_AGENTS_TAILSCALE === "off" ? null : findTailscale(env.PALM_AGENTS_TAILSCALE || undefined),
     secureCookies: env.PALM_AGENTS_INSECURE_COOKIES !== "1",
     headlessBrowser: env.PALM_AGENTS_HEADLESS === "1",
-    browserChannel: env.PALM_AGENTS_BROWSER_CHANNEL || undefined,
+    // Installed Google Chrome when there is one (sites trust it more than the bundled Chromium,
+    // and it has the codecs); "chromium" forces the bundled one.
+    browserChannel: env.PALM_AGENTS_BROWSER_CHANNEL === "chromium" ? undefined : env.PALM_AGENTS_BROWSER_CHANNEL || (process.platform === "darwin" && fs.existsSync("/Applications/Google Chrome.app") ? "chrome" : undefined),
     sessionTtlMs: Number(env.PALM_AGENTS_SESSION_TTL_DAYS ?? 30) * 86_400_000,
     agentWaitMs: Number(env.PALM_AGENTS_AGENT_WAIT_SEC ?? 240) * 1000,
     agentIdleMs: Number(env.PALM_AGENTS_AGENT_IDLE_SEC ?? 30) * 1000,

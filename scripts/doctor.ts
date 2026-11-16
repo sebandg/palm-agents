@@ -23,7 +23,7 @@ try {
 }
 const pw = path.join(process.env.HOME ?? "", "Library/Caches/ms-playwright");
 add("playwright chromium", fs.existsSync(pw) && fs.readdirSync(pw).some((d) => d.startsWith("chromium")) ? "ok" : "fail", fs.existsSync(pw) ? fs.readdirSync(pw).join(", ") : "run `npm run install-browser`");
-add("google chrome", fs.existsSync("/Applications/Google Chrome.app") ? "ok" : "warn", "optional: set PALM_AGENTS_BROWSER_CHANNEL=chrome to use it");
+add("google chrome", fs.existsSync("/Applications/Google Chrome.app") ? "ok" : "warn", fs.existsSync("/Applications/Google Chrome.app") ? "used for the shared browser (own profile)" : "not installed: the shared browser falls back to the bundled Chromium, which some sites refuse at sign-in");
 import { findTmux } from "../apps/control-service/src/terminal.ts";
 const tmux = findTmux(process.env.PALM_AGENTS_TMUX);
 add("tmux", tmux ? "ok" : "warn", tmux ? `${tmux} (${execFileSync(tmux, ["-V"], { encoding: "utf8" }).trim()})` : "not installed: the Terminal tab needs tmux (docs/setup.md, Terminal sessions)");

@@ -45,6 +45,7 @@ export async function bootTestEnv(opts: { browser?: boolean; env?: Record<string
     PALM_AGENTS_DATA_DIR: dataDir,
     PALM_AGENTS_PORT: String(port),
     PALM_AGENTS_HEADLESS: "1",
+    PALM_AGENTS_BROWSER_CHANNEL: "chromium", // the bundled one: the same on every machine
     PALM_AGENTS_INSECURE_COOKIES: "1",
     PALM_AGENTS_WEB_DIR: path.join(dataDir, "no-web"),
     PALM_AGENTS_TAILSCALE: "off", // never touch the real tailnet from tests

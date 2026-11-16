@@ -14,6 +14,7 @@ import { chromium, type Browser, type BrowserContext, type CDPSession, type Page
 import type { BrowserHealth, BrowserInput, BrowserTab, FrameMeta, Observation } from "@palm-agents/protocol";
 import { WorkerError, type FillField, type IpcFromWorker, type IpcRequest, type WorkerMethodName } from "./ipc.ts";
 import { mayRestore } from "./restore.ts";
+import { brandProfile } from "./brand.ts";
 
 const PROFILE_DIR = process.env.PALM_AGENTS_PROFILE_DIR;
 const HEADLESS = process.env.PALM_AGENTS_HEADLESS === "1";
@@ -52,7 +53,9 @@ const RETINA_DPR = 2;
 /** Per-page DevTools sessions holding the phone overrides; detaching one drops them. */
 const emuSessions = new WeakMap<Page, CDPSession>();
 /** Leave pages at the real window size: no metrics override at all unless the phone is sizing them. */
-const NATIVE = process.env.PALM_AGENTS_NATIVE_VIEWPORT === "1";
+// The default outside tests: a forced 1024x768 is one more thing a site can see that a person's
+// browser does not have. PALM_AGENTS_VIEWPORT=fixed brings the fixed desktop size back.
+const NATIVE = (process.env.PALM_AGENTS_VIEWPORT || (HEADLESS ? "fixed" : "window")) === "window";
 const nativeSize = new WeakMap<Page, { width: number; height: number }>();
 /** The page's viewport in CSS pixels, whoever set it. */
 function viewOf(page: Page): { width: number; height: number } {
@@ -145,6 +148,7 @@ async function startChrome(): Promise<number> {
   const old = readPort();
   if (old && (await portAnswers(old))) return old;
   fs.rmSync(PORT_FILE, { force: true });
+  brandProfile(PROFILE_DIR!);
   const args = [
     `--user-data-dir=${PROFILE_DIR}`,
     "--remote-debugging-port=0", // loopback only (Chrome's default bind address)

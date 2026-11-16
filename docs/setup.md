@@ -11,7 +11,7 @@ The machine side runs natively on macOS (no Docker, no VM, no sudo). The phone s
 | tmux 3.2+ | `brew install tmux`, or build it into `~/.local` (see §6b). |
 | Tailscale | On the Mac and on the phone, logged into the same tailnet (§4). |
 | An agent CLI | e.g. Claude Code (`claude`) or Codex (`codex`), logged in. |
-| Google Chrome (optional) | Set `PALM_AGENTS_BROWSER_CHANNEL=chrome` to drive it instead of the bundled Chromium (still a separate profile). |
+| Google Chrome (recommended) | Used for the shared browser when it is installed, on its own profile (never yours). Sites trust it more than the bundled Chromium, which is the fallback. The window is named **PALM AGENTS** with a teal theme so you can tell it from your own Chrome. |
 
 ## 2. Install the project
 
@@ -117,7 +117,8 @@ Agents are only visible to Palm Agents while they run on the tmux server, so sta
 | `PALM_AGENTS_TAILSCALE` | auto (`/Applications/Tailscale.app/…`) | Tailscale CLI for dev-server previews; `off` disables them |
 | `PALM_AGENTS_TMUX_SOCKET` | unset (default server) | tmux socket name (`tmux -L`); set only to isolate the phone's sessions from Terminal.app's |
 | `PALM_AGENTS_PUSH_CONTACT` | first HTTPS allowed origin | VAPID contact for push services (`mailto:` or `https:`); Apple rejects placeholder addresses with 403 |
-| `PALM_AGENTS_BROWSER_CHANNEL` | (Playwright Chromium) | `chrome` to use installed Google Chrome |
+| `PALM_AGENTS_BROWSER_CHANNEL` | `chrome` if installed | `chromium` forces the bundled Chromium |
+| `PALM_AGENTS_VIEWPORT` | `window` | `fixed` forces pages to 1024x768 for agents instead of the real window size |
 | `PALM_AGENTS_HEADLESS` | `0` | `1` for headless (tests) |
 | `PALM_AGENTS_AGENT_WAIT_SEC` | `240` | how long one `request_human` call waits for Hand back |
 | `PALM_AGENTS_DEV_DIR` | `~/dev` | where `open_session` looks for a project given by name |
