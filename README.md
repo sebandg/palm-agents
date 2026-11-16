@@ -48,6 +48,7 @@ More in [docs/alternatives.md](docs/alternatives.md).
 
 ## Documentation
 
+- [Features](docs/features.md): what each part does and its known limits
 - [Setup](docs/setup.md): installation, Tailscale, pairing, configuration
 - [Security](docs/security.md): what is protected and what is not
 - [Recovery](docs/recovery.md): what to do when something breaks
