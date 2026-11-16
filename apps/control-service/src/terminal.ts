@@ -47,6 +47,12 @@ export function findTmux(explicit?: string): string | null {
   return null;
 }
 
+/**
+ * BROWSER for everything that runs in a session: links a CLI opens (claude /login, gh auth)
+ * go to the shared Chrome, where the phone can see them, not to the Mac's default browser.
+ */
+export const SHARED_BROWSER_OPENER = path.resolve(import.meta.dirname, "../../../scripts/open-in-shared-browser");
+
 export class TerminalManager {
   private readonly bin: string | null;
   private attention = new Map<string, boolean>();
@@ -74,6 +80,8 @@ export class TerminalManager {
   /** Polls sessions so a prompt that appears while the phone is closed still raises a push alert. */
   startWatching(intervalMs = 3000) {
     if (!this.bin || this.watcher) return;
+    // Sessions started outside the service (cs, the Desktop shortcut, by hand) inherit it from the server.
+    void this.tmux(["set-environment", "-g", "BROWSER", SHARED_BROWSER_OPENER]).catch(() => {});
     this.watcher = setInterval(() => {
       void this.list().catch(() => []);
     }, intervalMs);
@@ -178,7 +186,7 @@ export class TerminalManager {
     const cwd = req.cwd ? path.resolve(req.cwd.replace(/^~(?=$|\/)/, os.homedir())) : os.homedir();
     if (!fs.existsSync(cwd)) throw new TerminalError(`directory does not exist: ${cwd}`, "tmux");
     // 100x40 suits a phone in landscape; an attached desktop client may resize it later.
-    const args = ["new-session", "-d", "-s", req.name, "-c", cwd, "-x", "100", "-y", "40"];
+    const args = ["new-session", "-d", "-s", req.name, "-c", cwd, "-x", "100", "-y", "40", "-e", `BROWSER=${SHARED_BROWSER_OPENER}`];
     if (req.command?.trim()) args.push(req.command.trim());
     try {
       await this.tmux(args);

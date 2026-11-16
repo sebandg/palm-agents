@@ -29,13 +29,15 @@ NAME="$(printf '%s' "${1:-$(basename "$DIR")}" | tr -c 'A-Za-z0-9._-' '-')"
 
 # A claude started from inside another claude refuses to run, and the tmux server keeps
 # the environment it was first started with, so scrub those variables.
+# Links opened inside the session go to the Palm Agents shared Chrome (visible on the phone).
+OPENER="$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")/open-in-shared-browser"
 CLEAN=""
 for v in $(env | grep -E '^(CLAUDE|ANTHROPIC)[A-Z_]*=' | cut -d= -f1); do CLEAN="$CLEAN -u $v"; done
 if [ -n "${TMUX:-}" ]; then
   # already inside tmux: create if needed, then switch this client to it
   # shellcheck disable=SC2086
-  "$TMUX_BIN" has-session -t "=$NAME" 2>/dev/null || env $CLEAN "$TMUX_BIN" new-session -d -s "$NAME" -c "$DIR"
+  "$TMUX_BIN" has-session -t "=$NAME" 2>/dev/null || env $CLEAN "$TMUX_BIN" new-session -d -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"
   exec "$TMUX_BIN" switch-client -t "=$NAME"
 fi
 # shellcheck disable=SC2086
-exec env $CLEAN "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR"
+exec env $CLEAN "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"

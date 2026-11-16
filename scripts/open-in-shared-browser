@@ -1,0 +1,16 @@
+#!/bin/sh
+# BROWSER for tmux sessions: opens a web address in the Palm Agents shared Chrome instead of
+# the Mac's default browser, so a link a CLI opens (claude /login, gh auth, ...) shows up in
+# the phone's Browser view. A new tab in front; the phone follows the front tab.
+# Falls back to the default browser when the shared one is not running.
+url="${1:-}"
+case "$url" in
+  http://*|https://*) ;;
+  *) exec /usr/bin/open "$@" ;;
+esac
+DATA="${PALM_AGENTS_DATA_DIR:-$HOME/.palm-agents}"
+port="$(head -1 "$DATA/browser-profile/DevToolsActivePort" 2>/dev/null || true)"
+if [ -n "$port" ] && /usr/bin/curl -sf -g -m 4 -o /dev/null -X PUT "http://127.0.0.1:$port/json/new?$url"; then
+  exit 0
+fi
+exec /usr/bin/open "$url"

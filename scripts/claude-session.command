@@ -54,4 +54,5 @@ if [[ -n "${PA_DRY_RUN:-}" ]]; then
   exit 0
 fi
 print -r -- "\n→ session ${NAME} in ${DIR}"
-exec env "${clean[@]}" "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR" claude "${CLAUDE_ARGS[@]}"
+# Links opened inside the session go to the Palm Agents shared Chrome (visible on the phone).
+exec env "${clean[@]}" "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=${0:A:h}/open-in-shared-browser" claude "${CLAUDE_ARGS[@]}"
