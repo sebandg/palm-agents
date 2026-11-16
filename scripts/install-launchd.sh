@@ -21,7 +21,8 @@ WRAPPER="$DATA_DIR/run.sh"
 cat > "$WRAPPER" <<RUN
 #!/bin/zsh
 set -a; [ -f "$ENV_FILE" ] && source "$ENV_FILE"; set +a
-export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# /usr/sbin for ioreg (the Mac input idle time behind owner_context).
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PALM_AGENTS_DATA_DIR="$DATA_DIR"
 cd "$ROOT"
 exec "$NODE" --no-warnings=ExperimentalWarning --import tsx apps/control-service/src/main.ts serve
@@ -42,6 +43,12 @@ cat > "$PLIST" <<PL
 </dict></plist>
 PL
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+# bootout returns before the job is gone, and bootstrapping too early fails with
+# "Input/output error" and leaves nothing loaded. Wait for it to disappear.
+for _ in $(seq 1 50); do
+  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+  sleep 0.2
+done
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 echo "installed $LABEL ($PLIST). Logs: $DATA_DIR/logs. Edit $ENV_FILE then: launchctl kickstart -k gui/$(id -u)/$LABEL"
