@@ -49,6 +49,13 @@ let mobile: { width: number; height: number } | null = null;
 const RETINA_DPR = 2;
 /** Per-page DevTools sessions holding the phone overrides; detaching one drops them. */
 const emuSessions = new WeakMap<Page, CDPSession>();
+/** Leave pages at the real window size: no metrics override at all unless the phone is sizing them. */
+const NATIVE = process.env.PALM_AGENTS_NATIVE_VIEWPORT === "1";
+const nativeSize = new WeakMap<Page, { width: number; height: number }>();
+/** The page's viewport in CSS pixels, whoever set it. */
+function viewOf(page: Page): { width: number; height: number } {
+  return page.viewportSize() ?? (mobile && NATIVE ? mobile : nativeSize.get(page)) ?? VIEWPORT;
+}
 
 function send(msg: IpcFromWorker) {
   process.send!(msg);
@@ -141,14 +148,23 @@ async function startChrome(): Promise<number> {
     "--remote-debugging-port=0", // loopback only (Chrome's default bind address)
     "--no-first-run",
     "--no-default-browser-check",
-    // Keep painting when the window is covered or in the background, so the phone's live view never freezes.
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
     // Tests only: no window, and no prompt for (or dependence on) the login keychain.
     ...(HEADLESS ? ["--headless=new", "--use-mock-keychain"] : []),
     "about:blank",
   ];
+  // On macOS open the app through LaunchServices, as a person (and the owner's gateway skill)
+  // does. Run as a direct child of this background job instead, the same Chrome with the same
+  // flags and profile was refused at claude.ai's sign-in check.
+  const app = /^(.*\.app)\/Contents\/MacOS\//.exec(CHROME_BIN)?.[1];
+  if (process.platform === "darwin" && app && !HEADLESS) {
+    await new Promise<void>((resolve, reject) => spawn("open", ["-na", app, "--args", ...args], { stdio: "ignore" }).on("exit", (c) => (c === 0 ? resolve() : reject(new Error(`open exited ${c}`)))).on("error", reject));
+    for (let i = 0; i < 100; i++) {
+      const port = readPort();
+      if (port && (await portAnswers(port))) return port;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error("Chrome did not open its DevTools port in 20 s (is the profile in use by a Chrome without one?)");
+  }
   const child = spawn(CHROME_BIN, args, { stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   let exited: number | null | undefined;
@@ -185,6 +201,8 @@ function gone(why: string) {
 async function sizePage(page: Page) {
   if (page.isClosed()) return;
   if (mobile) return emulate(page);
+  // Diagnostic switch: leave the page at the real window size, with no metrics override at all.
+  if (NATIVE) return;
   await page.setViewportSize(VIEWPORT);
 }
 
@@ -252,7 +270,11 @@ async function meta(page: Page): Promise<FrameMeta> {
     title = titleCache.get(page) ?? "";
   }
   titleCache.set(page, title);
-  const vp = page.viewportSize() ?? VIEWPORT;
+  if (NATIVE && !mobile) {
+    const real = (await withTimeout(page.evaluate("({ width: window.innerWidth, height: window.innerHeight })"), 2_000).catch(() => null)) as { width: number; height: number } | null;
+    if (real && real.width > 0) nativeSize.set(page, real);
+  }
+  const vp = viewOf(page);
   frameSeq += 1;
   touch();
   return { generation, tabId: idFor(page), url: page.url(), title, viewport: { width: vp.width, height: vp.height }, seq: frameSeq, capturedAt: new Date().toISOString(), mobile: mobile !== null };
@@ -327,7 +349,7 @@ function emitCastFrame(page: Page, jpegBase64: string) {
     castFieldsAt = now;
     void withTimeout(page.evaluate(FIELDS_SCRIPT), 2_000).then((f) => { castFields = f as FrameMeta["fields"]; }).catch(() => {});
   }
-  const vp = page.viewportSize() ?? VIEWPORT;
+  const vp = viewOf(page);
   frameSeq += 1;
   touch();
   const meta: FrameMeta = { generation, tabId: idFor(page), url: page.url(), title: titleCache.get(page) ?? "", viewport: { width: vp.width, height: vp.height }, seq: frameSeq, capturedAt: new Date().toISOString(), mobile: mobile !== null, fields: castFields };
@@ -379,12 +401,12 @@ async function emulate(page: Page) {
     if (!old) return;
     emuSessions.delete(page);
     await old.detach().catch(() => {}); // drops our metrics override
-    await page.setViewportSize(VIEWPORT); // Playwright re-applies its desktop metrics
+    if (!NATIVE) await page.setViewportSize(VIEWPORT); // Playwright re-applies its desktop metrics
     return;
   }
   const s = old ?? (await context.newCDPSession(page));
   emuSessions.set(page, s);
-  await page.setViewportSize(mobile); // keeps Playwright's own viewport (clicks, screenshots) in step
+  if (!NATIVE) await page.setViewportSize(mobile); // keeps Playwright's own viewport (clicks, screenshots) in step
   // mobile: false - a narrow window on a desktop browser, which is exactly what this is.
   await s.send("Emulation.setDeviceMetricsOverride", { width: mobile.width, height: mobile.height, deviceScaleFactor: RETINA_DPR, mobile: false });
 }
@@ -498,7 +520,7 @@ async function input(inp: BrowserInput, expect?: { generation: number; tabId: st
   }
   switch (inp.type) {
     case "click": {
-      const vp = page.viewportSize() ?? VIEWPORT;
+      const vp = viewOf(page);
       if (inp.viewport.width !== vp.width || inp.viewport.height !== vp.height) throw new WorkerError("input rejected: viewport mismatch", "stale_viewport");
       if (inp.x < 0 || inp.y < 0 || inp.x > vp.width || inp.y > vp.height) throw new WorkerError("click outside viewport", "bad_input");
       await withTimeout(page.mouse.click(inp.x, inp.y), OP_TIMEOUT_MS);
@@ -506,7 +528,7 @@ async function input(inp: BrowserInput, expect?: { generation: number; tabId: st
       break;
     }
     case "drag": {
-      const vp = page.viewportSize() ?? VIEWPORT;
+      const vp = viewOf(page);
       if (inp.viewport.width !== vp.width || inp.viewport.height !== vp.height) throw new WorkerError("input rejected: viewport mismatch", "stale_viewport");
       const [first, ...rest] = inp.points;
       await page.mouse.move(first!.x, first!.y);
