@@ -31,6 +31,8 @@ let context: BrowserContext | null = null;
 let browser: Browser | null = null;
 /** The Chrome we started (null when we attached to one that outlived an earlier worker). */
 let chrome: ChildProcess | null = null;
+/** The DevTools port of the Chrome we are attached to. */
+let cdpPort: number | null = null;
 let generation = Number(process.env.PALM_AGENTS_BROWSER_GENERATION ?? 0);
 let frameSeq = 0;
 let state: BrowserHealth["state"] = "stopped";
@@ -212,7 +214,8 @@ async function launch(): Promise<{ generation: number }> {
   lastError = null;
   publishHealth();
   try {
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${await startChrome()}`);
+    cdpPort = await startChrome();
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
     const ctx = browser.contexts()[0];
     if (!ctx) throw new Error("Chrome has no default profile context");
     context = ctx;
@@ -356,6 +359,53 @@ function emitCastFrame(page: Page, jpegBase64: string) {
   send({ event: "frame", meta, jpegBase64 });
 }
 setInterval(() => void syncCast(), 1000).unref();
+
+// The phone shows the selected tab. Chrome is a real window now: the owner clicks tabs in it
+// and links opened on the Mac land in it, so the selection follows whichever tab is actually
+// in front. Chrome's own target list says which that is (most recently activated first);
+// the pages cannot be asked, because an attached page always reports itself visible and
+// focused. Selecting a tab from the phone or an agent brings it to the front, so the two
+// agree in the other direction already.
+const targetIds = new WeakMap<Page, string>();
+async function targetIdOf(page: Page): Promise<string | null> {
+  const known = targetIds.get(page);
+  if (known || !context) return known ?? null;
+  const s = await context.newCDPSession(page);
+  try {
+    const id = ((await s.send("Target.getTargetInfo")) as { targetInfo: { targetId: string } }).targetInfo.targetId;
+    targetIds.set(page, id);
+    return id;
+  } finally {
+    await s.detach().catch(() => {});
+  }
+}
+let following = false;
+async function followFrontTab() {
+  if (following || state !== "ready" || !context || cdpPort === null) return;
+  const pages = livePages();
+  if (pages.length < 2) return;
+  following = true;
+  try {
+    const list = (await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`, { signal: AbortSignal.timeout(1500) })).json()) as Array<{ id: string; type: string }>;
+    const front = list.find((t) => t.type === "page")?.id;
+    if (!front) return;
+    for (const p of pages) {
+      if ((await targetIdOf(p).catch(() => null)) !== front) continue;
+      if (p !== selectedPage) {
+        selectedPage = p;
+        refsValid = false;
+        publishHealth();
+        void syncCast();
+      }
+      return;
+    }
+  } catch {
+    /* the browser is busy or going away; try again on the next tick */
+  } finally {
+    following = false;
+  }
+}
+setInterval(() => void followFrontTab(), 2000).unref();
 
 // Visible editable fields (viewport pixels). Runs in the page.
 const FIELDS_SCRIPT = `(() => {
