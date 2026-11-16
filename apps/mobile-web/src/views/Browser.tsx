@@ -115,9 +115,10 @@ export function BrowserView() {
     return () => { alive = false; clearInterval(ti); };
   }, [humanControl, zoom]);
 
-  // While the owner has control, the Mac's browser becomes a phone of this screen's size, so
-  // sites serve their mobile layout and everything shows at 1:1. The server switches it back
-  // to desktop for the agent as soon as control leaves the owner.
+  // While the owner has control, the pages are sized to this screen, so what they see here
+  // is laid out the way it is in their hand. The browser stays desktop Chrome on the Mac:
+  // only the viewport changes (see emulate() in the worker), never the user agent. The
+  // server restores the desktop viewport as soon as control leaves the owner.
   useEffect(() => {
     if (!humanControl) { deviceAsked.current = false; return; }
     if (!frame || !!frame.meta.mobile === !desktopSite || deviceAsked.current || unavailable) return;

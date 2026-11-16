@@ -56,6 +56,11 @@ export function createFixtureServer() {
     if (req.method === "GET" && url.pathname === "/") {
       return send(200, page("Fixture Portal", `<p>Public landing page.</p><a id="go-login" href="/login">Sign in</a><br><a id="go-popup" href="/popup-start">Sign in with popup</a>`));
     }
+    // Echoes what the browser says it is, so a test can check we do not misrepresent it.
+    if (req.method === "GET" && url.pathname === "/ua") {
+      const ua = String(req.headers["user-agent"] ?? "");
+      return send(200, page("What the site sees", `<p id="server-ua">server: ${ua.replace(/[<>&]/g, "")}</p><p id="client-ua"></p><script>document.getElementById("client-ua").textContent = "client: " + navigator.userAgent + " | platform: " + navigator.platform + " | touch: " + ("ontouchstart" in window) + " | dpr: " + window.devicePixelRatio;</script>`));
+    }
     if (url.pathname === "/login") {
       if (req.method === "GET") {
         if (s.stage === "done") return redirect("/success");

@@ -33,7 +33,9 @@ let refPage: Page | null = null;
 let refsValid = false;
 /** Phone emulation while the owner has control (null = desktop viewport for the agent). */
 let mobile: { width: number; height: number } | null = null;
-const MOBILE_DPR = 3;
+// Capture scale for the live view. 2 is what every current Mac screen reports, so the page
+// is rendered sharply for a retina phone without claiming to be a device this is not.
+const RETINA_DPR = 2;
 /** Per-page DevTools sessions holding the phone overrides; detaching one drops them. */
 const emuSessions = new WeakMap<Page, CDPSession>();
 
@@ -230,7 +232,7 @@ async function syncCast() {
       latest = f.data;
       if (!timer) timer = setTimeout(flush, Math.max(0, CAST_FRAME_MS - (Date.now() - lastEmit)));
     });
-    const vp = mobile ?? VIEWPORT, scale = mobile ? MOBILE_DPR : 1;
+    const vp = mobile ?? VIEWPORT, scale = mobile ? RETINA_DPR : 1;
     await s.send("Page.startScreencast", { format: "jpeg", quality: CAST_QUALITY, maxWidth: vp.width * scale, maxHeight: vp.height * scale, everyNthFrame: 1 });
   } catch {
     await stopCast();
@@ -271,7 +273,7 @@ const FIELDS_SCRIPT = `(() => {
 async function frame(quality = 55): Promise<{ meta: FrameMeta; jpegBase64: string }> {
   const page = current();
   const emu = mobile ? emuSessions.get(page) : undefined;
-  // In phone mode capture at the device pixel ratio so text stays sharp on the phone's retina screen.
+  // While sized to the phone, capture at the retina scale so text stays sharp on its screen.
   const jpegBase64 = emu
     ? ((await withTimeout(emu.send("Page.captureScreenshot", { format: "jpeg", quality }), OP_TIMEOUT_MS)) as { data: string }).data
     : (await withTimeout(page.screenshot({ type: "jpeg", quality, scale: "css", animations: "disabled", caret: "initial" }), OP_TIMEOUT_MS)).toString("base64");
@@ -279,47 +281,44 @@ async function frame(quality = 55): Promise<{ meta: FrameMeta; jpegBase64: strin
   return { meta: { ...(await meta(page)), fields }, jpegBase64 };
 }
 
-/** Phone identity derived from the real browser's, so the version and engine stay truthful. */
-async function mobileIdentity(page: Page) {
-  const real = (await page.evaluate(`({ ua: navigator.userAgent, brands: (navigator.userAgentData && navigator.userAgentData.brands) || [] })`)) as { ua: string; brands: Array<{ brand: string; version: string }> };
-  const userAgent = real.ua
-    .replace(/\([^)]*\)/, "(Linux; Android 14; Pixel 8)")
-    .replace("HeadlessChrome", "Chrome")
-    .replace(/ Safari\//, " Mobile Safari/");
-  // navigator.platform must agree with the phone identity; a Mac platform under an Android UA looks like a bot.
-  return { userAgent, platform: "Linux armv8l", userAgentMetadata: { platform: "Android", platformVersion: "14.0.0", architecture: "", model: "Pixel 8", mobile: true, brands: real.brands } };
-}
-
-/** Apply the current mode (phone or desktop) to one page. */
+/**
+ * Size the page to the window the owner is looking through - and nothing more. The browser
+ * stays what it is: Chrome on this Mac. It used to claim to be a Pixel 8 (UA, platform,
+ * touch, DPR 3) whenever the phone took control, which was never true - the machine is the
+ * Mac either way, the phone is only a remote screen - and it cost more than the mobile
+ * layouts it bought: a cf_clearance cookie is bound to the exact user agent, so every
+ * hand-over invalidated it and Cloudflare re-challenged (claude.ai loops on that), the Mac
+ * GPU, fonts and screen metrics never followed the lie anyway, and the reload that made the
+ * site re-serve itself threw away whatever the owner had half-filled in. Responsive sites
+ * key off viewport width, which is the one thing that genuinely changes.
+ */
 async function emulate(page: Page) {
   if (page.isClosed() || !context) return;
   const old = emuSessions.get(page);
   if (!mobile) {
     if (!old) return;
     emuSessions.delete(page);
-    await old.detach().catch(() => {}); // drops our metrics, UA and touch overrides
+    await old.detach().catch(() => {}); // drops our metrics override
     await page.setViewportSize(VIEWPORT); // Playwright re-applies its desktop metrics
     return;
   }
   const s = old ?? (await context.newCDPSession(page));
   emuSessions.set(page, s);
   await page.setViewportSize(mobile); // keeps Playwright's own viewport (clicks, screenshots) in step
-  await s.send("Emulation.setDeviceMetricsOverride", { width: mobile.width, height: mobile.height, deviceScaleFactor: MOBILE_DPR, mobile: true });
-  await s.send("Emulation.setUserAgentOverride", await mobileIdentity(page));
-  await s.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  // mobile: false - a narrow window on a desktop browser, which is exactly what this is.
+  await s.send("Emulation.setDeviceMetricsOverride", { width: mobile.width, height: mobile.height, deviceScaleFactor: RETINA_DPR, mobile: false });
 }
 
-/** `reload` (default: only when becoming a phone) makes the site serve the version for the new device. */
-async function setDevice(next: { width: number; height: number } | null, reload = next !== null): Promise<{ meta: FrameMeta }> {
+/** Size the pages to the owner's phone screen, or back to the desktop viewport. */
+async function setDevice(next: { width: number; height: number } | null): Promise<{ meta: FrameMeta }> {
   const page = current();
   const changed = JSON.stringify(next) !== JSON.stringify(mobile);
   mobile = next;
   if (changed) {
     for (const p of livePages()) await withTimeout(emulate(p), OP_TIMEOUT_MS).catch(() => {});
     refsValid = false;
-    // Reload so the site serves the version for this device. The automatic restore when control goes
-    // back to the agent skips it, so the page the owner left is not reloaded under the agent.
-    if (reload && /^https?:/.test(page.url())) await withTimeout(page.reload({ timeout: 15_000, waitUntil: "domcontentloaded" }), 20_000).catch(() => {});
+    // No reload: nothing about the client changed, so the page just reflows - and a form the
+    // owner is in the middle of (the whole point of a hand-over) survives the switch.
     await settle(page, 300);
   }
   return { meta: await meta(page) };
@@ -586,7 +585,7 @@ const handlers: { [K in WorkerMethodName]: (params: any) => Promise<unknown> } =
   input: ({ input: inp, expect }) => enqueue(() => input(inp, expect)).finally(() => void syncCast()),
   clickRef: ({ ref }) => enqueue(() => clickRef(ref)),
   typeRef: ({ ref, text, submit }) => enqueue(() => typeRef(ref, text, submit)),
-  device: ({ mobile: m, reload }) => enqueue(() => setDevice(m, reload)).finally(() => void syncCast()),
+  device: ({ mobile: m }) => enqueue(() => setDevice(m)).finally(() => void syncCast()),
   screencast: async ({ on }) => {
     castWanted = !!on;
     await syncCast();

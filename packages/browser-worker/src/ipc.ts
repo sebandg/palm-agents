@@ -19,7 +19,7 @@ export interface WorkerMethods {
   clickRef: { params: { ref: string }; result: { meta: FrameMeta } };
   typeRef: { params: { ref?: string; text: string; submit?: boolean }; result: { meta: FrameMeta } };
   /** Emulate a phone of this size (mobile identity, touch, reload), or return to the desktop viewport with null. */
-  device: { params: { mobile: { width: number; height: number } | null; reload?: boolean }; result: { meta: FrameMeta } };
+  device: { params: { mobile: { width: number; height: number } | null }; result: { meta: FrameMeta } };
   /** Live screencast of the selected tab: frames arrive as `frame` events while on. */
   screencast: { params: { on: boolean }; result: { on: boolean } };
   /** Resolves once no operation is in flight. Used as the takeover barrier. */

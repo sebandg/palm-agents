@@ -269,7 +269,7 @@ export function createApp(cfg: Config, log: Logger): App {
     if (browser.health.state !== "ready") return c.json({ error: "browser unavailable" }, 503);
     try {
       const m = "desktop" in body.data ? null : body.data;
-      const r = await browser.client.call("device", { mobile: m, reload: true }, 40_000);
+      const r = await browser.client.call("device", { mobile: m }, 40_000);
       log("info", m ? `phone viewport ${m.width}x${m.height}` : "desktop site");
       return c.json({ meta: r.meta });
     } catch (err) {
