@@ -1,9 +1,16 @@
-// Browser worker child process. Owns one persistent Playwright context.
+// Browser worker child process. Owns one Chrome and its persistent profile.
 // Runs outside the control service's event loop so a browser hang or crash
 // never takes the management interface down.
+//
+// Chrome is started as an ordinary browser (profile directory and a loopback DevTools port,
+// nothing else that marks it as automated) and Playwright only ATTACHES to it. Letting
+// Playwright launch it instead adds --no-sandbox, a long --disable-features list and a mock
+// keychain, and sites behind a managed bot check (claude.ai) then refuse the sign-in no
+// matter who clicks. Same pattern as the owner's chrome-devtools gateway skill.
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { chromium, type BrowserContext, type CDPSession, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
 import type { BrowserHealth, BrowserInput, BrowserTab, FrameMeta, Observation } from "@palm-agents/protocol";
 import { WorkerError, type FillField, type IpcFromWorker, type IpcRequest, type WorkerMethodName } from "./ipc.ts";
 import { mayRestore } from "./restore.ts";
@@ -12,6 +19,7 @@ const PROFILE_DIR = process.env.PALM_AGENTS_PROFILE_DIR;
 const HEADLESS = process.env.PALM_AGENTS_HEADLESS === "1";
 const CHANNEL = process.env.PALM_AGENTS_BROWSER_CHANNEL; // e.g. "chrome" to use installed Google Chrome
 const VIEWPORT = { width: Number(process.env.PALM_AGENTS_VIEWPORT_W ?? 1024), height: Number(process.env.PALM_AGENTS_VIEWPORT_H ?? 768) };
+const CHROME_BIN = process.env.PALM_AGENTS_BROWSER_BIN || (CHANNEL === "chrome" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : chromium.executablePath());
 const OP_TIMEOUT_MS = 30_000;
 
 if (!PROFILE_DIR) throw new Error("PALM_AGENTS_PROFILE_DIR is required");
@@ -20,6 +28,9 @@ const LAST_URL_FILE = path.join(path.dirname(PROFILE_DIR), "browser-last-url.txt
 if (!process.send) throw new Error("browser worker must be started with an IPC channel");
 
 let context: BrowserContext | null = null;
+let browser: Browser | null = null;
+/** The Chrome we started (null when we attached to one that outlived an earlier worker). */
+let chrome: ChildProcess | null = null;
 let generation = Number(process.env.PALM_AGENTS_BROWSER_GENERATION ?? 0);
 let frameSeq = 0;
 let state: BrowserHealth["state"] = "stopped";
@@ -101,22 +112,96 @@ function wirePage(page: Page) {
   });
 }
 
+/** Chrome writes the DevTools port it chose (we ask for 0 = any free one) on the first line. */
+const PORT_FILE = path.join(PROFILE_DIR, "DevToolsActivePort");
+function readPort(): number | null {
+  try {
+    const n = Number(fs.readFileSync(PORT_FILE, "utf8").split("\n")[0]);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+async function portAnswers(port: number): Promise<boolean> {
+  try {
+    return (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1000) })).ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Start Chrome the way a person would, plus the DevTools port; returns the port to attach to. */
+async function startChrome(): Promise<number> {
+  // A Chrome left running by a worker that died still holds the profile: attach to it again.
+  const old = readPort();
+  if (old && (await portAnswers(old))) return old;
+  fs.rmSync(PORT_FILE, { force: true });
+  const args = [
+    `--user-data-dir=${PROFILE_DIR}`,
+    "--remote-debugging-port=0", // loopback only (Chrome's default bind address)
+    "--no-first-run",
+    "--no-default-browser-check",
+    // Keep painting when the window is covered or in the background, so the phone's live view never freezes.
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    // Tests only: no window, and no prompt for (or dependence on) the login keychain.
+    ...(HEADLESS ? ["--headless=new", "--use-mock-keychain"] : []),
+    "about:blank",
+  ];
+  const child = spawn(CHROME_BIN, args, { stdio: ["ignore", "ignore", "pipe"] });
+  let stderr = "";
+  let exited: number | null | undefined;
+  child.stderr?.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-2000); });
+  child.on("exit", (code) => { exited = code; });
+  child.on("error", (e) => { stderr += e.message; exited = -1; });
+  for (let i = 0; i < 100; i++) {
+    const port = readPort();
+    if (port && (await portAnswers(port))) {
+      chrome = child;
+      child.on("exit", () => { if (chrome === child) { chrome = null; gone("browser exited"); } });
+      return port;
+    }
+    // Chrome hands a second launch on the same profile to the running one and exits at once.
+    if (exited !== undefined) throw new Error(exited === 0 ? "Opening in existing browser session: the profile is in use by a Chrome without a DevTools port" : `Chrome exited (${exited}) before opening its DevTools port. ${stderr.trim().split("\n").pop() ?? ""}`);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  child.kill();
+  throw new Error("Chrome did not open its DevTools port in 20 s");
+}
+
+/** The browser went away under us (crash, quit by hand, connection lost). */
+function gone(why: string) {
+  if (!context && state !== "ready") return;
+  context = null;
+  browser = null;
+  selectedPage = null;
+  state = "unavailable";
+  lastError = lastError ?? why;
+  publishHealth();
+}
+
+/** Desktop viewport, or the phone's while the owner has control. Attached pages start at window size. */
+async function sizePage(page: Page) {
+  if (page.isClosed()) return;
+  if (mobile) return emulate(page);
+  await page.setViewportSize(VIEWPORT);
+}
+
 async function launch(): Promise<{ generation: number }> {
   if (context) return { generation };
   state = "starting";
   lastError = null;
   publishHealth();
   try {
-    context = await chromium.launchPersistentContext(PROFILE_DIR!, {
-      headless: HEADLESS,
-      channel: CHANNEL || undefined,
-      viewport: VIEWPORT,
-      ignoreDefaultArgs: ["--enable-automation"],
-      // Keep painting when the window is covered or in the background, so the phone's live view never freezes.
-      args: ["--no-first-run", "--no-default-browser-check", "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding"],
-    });
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${await startChrome()}`);
+    const ctx = browser.contexts()[0];
+    if (!ctx) throw new Error("Chrome has no default profile context");
+    context = ctx;
+    browser.on("disconnected", () => gone("lost the connection to the browser"));
   } catch (err) {
     context = null;
+    browser = null;
     state = "unavailable";
     const msg = err instanceof Error ? err.message : String(err);
     lastError = /SingletonLock|profile.*in use|already running|Opening in existing browser/i.test(msg)
@@ -128,25 +213,20 @@ async function launch(): Promise<{ generation: number }> {
   generation += 1;
   frameSeq = 0;
   refsValid = false;
-  for (const p of context.pages()) wirePage(p);
+  for (const p of context.pages()) { wirePage(p); await sizePage(p).catch(() => {}); }
   context.on("page", (p) => {
     wirePage(p);
     // New tabs / popups become selectable. Do not steal selection automatically, but
     // if nothing is selected (first launch) select it.
     if (!selectedPage || selectedPage.isClosed()) selectedPage = p;
-    if (mobile) void enqueue(() => emulate(p)).catch(() => {});
+    void enqueue(() => sizePage(p)).catch(() => {});
     publishHealth();
   });
-  context.on("close", () => {
-    context = null;
-    selectedPage = null;
-    state = "unavailable";
-    lastError = lastError ?? "browser context closed unexpectedly";
-    publishHealth();
-  });
+  context.on("close", () => gone("browser context closed unexpectedly"));
   if (context.pages().length === 0) {
     const p = await context.newPage();
     wirePage(p);
+    await sizePage(p).catch(() => {});
     selectedPage = p;
   } else {
     selectedPage = context.pages()[0] ?? null;
@@ -593,10 +673,21 @@ const handlers: { [K in WorkerMethodName]: (params: any) => Promise<unknown> } =
   },
   barrier: () => enqueue(async () => ({ drained: true as const })),
   shutdown: async () => {
-    const c = context;
+    const b = browser, child = chrome;
     context = null;
+    browser = null;
+    chrome = null;
     state = "stopped";
-    if (c) await c.close().catch(() => {});
+    if (b) {
+      // Ask Chrome to quit (it flushes cookies and releases the profile lock); disconnecting
+      // alone would leave it running, because we attached to it instead of launching it.
+      await withTimeout(b.newBrowserCDPSession().then((s) => s.send("Browser.close")), 3_000).catch(() => {});
+      await b.close().catch(() => {});
+    }
+    if (child && child.exitCode === null) {
+      await Promise.race([new Promise((r) => child.once("exit", r)), new Promise((r) => setTimeout(r, 5_000))]);
+      if (child.exitCode === null) child.kill("SIGKILL");
+    }
     publishHealth();
     setTimeout(() => process.exit(0), 50);
     return { ok: true as const };

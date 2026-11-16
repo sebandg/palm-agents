@@ -38,6 +38,10 @@ This is a single-owner system. It is **not** a sandbox against a malicious agent
 
 The agent's provider (Anthropic for Claude Code, OpenAI for Codex) receives what you type into the agent and its tool results, including for every `browser_observe` the URL, title, element list, visible text snippet and a JPEG of the page. Screenshots taken **while you hold control** are shown only to you; the agent gets a new observation only after you hand back. An agent that calls `owner_context` is told which screen you are at and how long ago the Mac's keyboard or trackpad was touched, so that too reaches its provider; it is a time, never what you typed. Web Push payloads are generic strings sent through Apple's push service.
 
+## The shared browser's DevTools port
+
+The control service starts Chrome as an ordinary browser on its own profile and attaches to it through a DevTools port (`--remote-debugging-port=0`: a random free port, bound to loopback, written to `DevToolsActivePort` in the profile). Chrome is not launched by the automation library, because that adds flags that sites behind a managed bot check (claude.ai) reject at sign-in. The price: any process running as you on the Mac can connect to that port and drive the browser with its signed-in sessions. It is not reachable from the network or the tailnet.
+
 ## Storage
 
 - `~/.palm-agents` mode 700; DB and env mode 600. Browser profile excluded from git and diagnostics; it contains authenticated website sessions — treat backups as secrets.
