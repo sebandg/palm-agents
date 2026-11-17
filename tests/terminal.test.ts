@@ -78,6 +78,12 @@ describe.skipIf(!tmux)("terminal sessions (tmux)", () => {
     expect(await run(["show-options", "-w", "-t", `=${name}:`, "window-size"])).toContain("manual");
   });
 
+  it("turns on mouse scrolling and a long history before the first session exists", async () => {
+    const run = (args: string[]) => import("node:child_process").then((cp) => new Promise<string>((r) => cp.execFile(tmux!, ["-L", SOCKET, ...args], (_e, out) => r(out))));
+    expect(await run(["show-options", "-g", "mouse"])).toContain("on");
+    expect((await run(["display-message", "-p", "-t", `=${name}:`, "#{history_limit}"])).trim()).toBe("50000");
+  });
+
   it("names the program running under a wrapping shell (`prog; exec zsh -l` sessions)", async () => {
     const c = client(env);
     expect((await c.post("/api/term", { name: "pa-test-wrapped", cwd: env.dataDir, command: "sleep 30; exec sh" })).status).toBe(201);

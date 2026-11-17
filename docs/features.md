@@ -7,6 +7,7 @@ What Palm Agents does and how each part behaves. Setup steps are in [setup.md](s
 - Agents run in ordinary tmux sessions on the Mac. They keep running when the phone disconnects, and the same session can be opened at the desk.
 - The phone's Terminal tab lists every session on the Mac's default tmux server and shows one at the phone's own width, with a text box and a row of keys for what CLIs ask for (1/2/3, y/n, arrows, Esc, Ctrl-C).
 - Whoever used a session last gets the width: the phone sets its size when you type there, and the Mac takes it back when its window is attached, focused or resized.
+- At the Mac, the wheel or trackpad scrolls back through a session, up to 50,000 lines for sessions started after the change. Palm Agents turns tmux's mouse support on for this, also if your own tmux config has it off. Selecting text in Terminal then needs Fn held while dragging. While a session is scrolled up at the Mac, keys sent from the phone go to tmux's scroll mode, not to the program; scroll to the bottom or press `q` to leave it.
 - Web addresses in a session's output are tappable on the phone, including long ones a CLI wrapped over several lines. A tap opens the page in the phone's own browser.
 - Only sessions on the tmux server are visible to Palm Agents. A `claude` started straight in a desk terminal has no phone remote, no alerts and no presence signal.
 

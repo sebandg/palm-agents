@@ -53,6 +53,15 @@ export function findTmux(explicit?: string): string | null {
  */
 export const SHARED_BROWSER_OPENER = path.resolve(import.meta.dirname, "../../../scripts/open-in-shared-browser");
 
+/**
+ * Put in front of `new-session` so the server has these before the first pane exists: the
+ * wheel or trackpad scrolls a session in the Mac's Terminal window (tmux leaves the mouse
+ * off by default), and new sessions keep 50,000 lines instead of 2,000. `start-server`
+ * first, because `set-option` alone fails when no server is running yet.
+ * scripts/cs and scripts/claude-session.command set the same two options.
+ */
+const SCROLL_OPTIONS = ["start-server", ";", "set-option", "-g", "mouse", "on", ";", "set-option", "-g", "history-limit", "50000", ";"];
+
 export class TerminalManager {
   private readonly bin: string | null;
   private attention = new Map<string, boolean>();
@@ -186,7 +195,7 @@ export class TerminalManager {
     const cwd = req.cwd ? path.resolve(req.cwd.replace(/^~(?=$|\/)/, os.homedir())) : os.homedir();
     if (!fs.existsSync(cwd)) throw new TerminalError(`directory does not exist: ${cwd}`, "tmux");
     // 100x40 suits a phone in landscape; an attached desktop client may resize it later.
-    const args = ["new-session", "-d", "-s", req.name, "-c", cwd, "-x", "100", "-y", "40", "-e", `BROWSER=${SHARED_BROWSER_OPENER}`];
+    const args = [...SCROLL_OPTIONS, "new-session", "-d", "-s", req.name, "-c", cwd, "-x", "100", "-y", "40", "-e", `BROWSER=${SHARED_BROWSER_OPENER}`];
     if (req.command?.trim()) args.push(req.command.trim());
     try {
       await this.tmux(args);
@@ -239,6 +248,7 @@ exec ${this.bin}${sock} attach -t '=${name}'
   private async ensureWidthHooks() {
     const restore = "set-option -w -u window-size";
     await this.tmux([
+      ...SCROLL_OPTIONS.slice(2), // also for a server that was started at the desk
       "set-option", "-s", "focus-events", "on", ";",
       "set-hook", "-g", "client-attached", restore, ";",
       "set-hook", "-g", "client-focus-in", restore, ";",

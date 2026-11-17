@@ -55,4 +55,5 @@ if [[ -n "${PA_DRY_RUN:-}" ]]; then
 fi
 print -r -- "\n→ session ${NAME} in ${DIR}"
 # Links opened inside the session go to the Palm Agents shared Chrome (visible on the phone).
-exec env "${clean[@]}" "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=${0:A:h}/open-in-shared-browser" claude "${CLAUDE_ARGS[@]}"
+# The options in front turn on wheel/trackpad scrolling and a long history (same as scripts/cs).
+exec env "${clean[@]}" "$TMUX_BIN" start-server \; set-option -g mouse on \; set-option -g history-limit 50000 \; new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=${0:A:h}/open-in-shared-browser" claude "${CLAUDE_ARGS[@]}"

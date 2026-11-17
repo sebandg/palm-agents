@@ -31,13 +31,16 @@ NAME="$(printf '%s' "${1:-$(basename "$DIR")}" | tr -c 'A-Za-z0-9._-' '-')"
 # the environment it was first started with, so scrub those variables.
 # Links opened inside the session go to the Palm Agents shared Chrome (visible on the phone).
 OPENER="$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")/open-in-shared-browser"
+# Wheel/trackpad scrolling in the Mac's Terminal window and a long history (tmux has the
+# mouse off and keeps 2,000 lines by default). The service sets the same two options.
+SCROLL='start-server ; set-option -g mouse on ; set-option -g history-limit 50000 ;'
 CLEAN=""
 for v in $(env | grep -E '^(CLAUDE|ANTHROPIC)[A-Z_]*=' | cut -d= -f1); do CLEAN="$CLEAN -u $v"; done
 if [ -n "${TMUX:-}" ]; then
   # already inside tmux: create if needed, then switch this client to it
   # shellcheck disable=SC2086
-  "$TMUX_BIN" has-session -t "=$NAME" 2>/dev/null || env $CLEAN "$TMUX_BIN" new-session -d -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"
+  "$TMUX_BIN" has-session -t "=$NAME" 2>/dev/null || env $CLEAN "$TMUX_BIN" $SCROLL new-session -d -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"
   exec "$TMUX_BIN" switch-client -t "=$NAME"
 fi
 # shellcheck disable=SC2086
-exec env $CLEAN "$TMUX_BIN" new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"
+exec env $CLEAN "$TMUX_BIN" $SCROLL new-session -A -s "$NAME" -c "$DIR" -e "BROWSER=$OPENER"
